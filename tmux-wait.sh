@@ -53,6 +53,15 @@ run() {
     fi
 }
 
+# Helper: pipe stdin to a command locally or over SSH
+pipe_to() {
+    if [ -n "$HOST" ]; then
+        ssh "$HOST" "$1"
+    else
+        bash -c "$1"
+    fi
+}
+
 # Check what's currently running in the pane
 get_pane_command() {
     run "tmux display-message -p -t $SESSION '#{pane_current_command}'"
@@ -78,9 +87,10 @@ wait_for_idle() {
     return 1
 }
 
-# Generate unique marker
+# Generate unique marker (buffer uses session name - one per session, reused)
 TAG="$$-$(date +%s)"
 START_MARKER="TMUX_CMD_${TAG}"
+BUFFER_NAME="claude-${SESSION}"
 
 # Check if something is already running
 if ! is_idle; then
@@ -88,9 +98,13 @@ if ! is_idle; then
     exit 1
 fi
 
-# Base64 encode command to avoid escaping hell through SSH -> tmux
-CMD_B64=$(printf '%s\n' "$CMD" | base64 -w0)
-run "tmux send-keys -t $SESSION 'CMD=\$(echo $CMD_B64 | base64 -d); printf \"\\033[1;36m>>> \\$ \\033[0m%s\\n\" \"\$CMD\"; printf \"\\033[30;40m%s\\033[0m\\n\" \"$START_MARKER\"; eval \"\$CMD\"' Enter"
+# Load command into a named tmux buffer (no escaping needed - travels via stdin)
+# Buffer is named per-session, so parallel runs on different sessions don't conflict
+printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
+
+# Send template that retrieves from buffer and executes
+# The only thing going through send-keys is this fixed template - no user input
+run "tmux send-keys -t $SESSION 'CMD=\$(tmux show-buffer -b $BUFFER_NAME); printf \"\\033[1;36m>>> \\$ \\033[0m%s\\n\" \"\$CMD\"; printf \"\\033[30;40m%s\\033[0m\\n\" \"$START_MARKER\"; eval \"\$CMD\"' Enter"
 
 # Wait briefly for command to start (pane_current_command to change from shell)
 sleep 0.3

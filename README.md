@@ -77,11 +77,14 @@ Passing commands as arguments (`'command'`) causes escaping issues -- characters
 ### How it works
 
 1. Reads command from stdin (heredoc)
-2. Base64 encodes and sends to tmux via `send-keys`
-3. The command is displayed with a colored `>>> $` prefix before execution
-4. An invisible marker is printed after the command echo
-5. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
-6. Captures output from the marker to end, strips trailing blanks and prompt
+2. Loads command into a named tmux buffer (one per session, no conflicts)
+3. Sends a fixed template via `send-keys` that retrieves and evals the buffer
+4. The command is displayed with a colored `>>> $` prefix before execution
+5. An invisible marker is printed for output capture
+6. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
+7. Captures output from the marker to end, strips trailing blanks and prompt
+
+No base64 encoding, no escaping issues, clean tmux scrollback.
 
 ## Requirements
 
