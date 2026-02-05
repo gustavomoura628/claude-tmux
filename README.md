@@ -63,6 +63,9 @@ EOF
 npm install
 EOF
 
+# Continue watching an already-running command
+./tmux-wait.sh -s my-session -c
+
 # Multi-line commands work naturally
 ./tmux-wait.sh -s my-session << 'EOF'
 for i in 1 2 3; do
