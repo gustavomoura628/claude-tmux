@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
 # tmux-wait.sh -- Send a command to a tmux session, wait for it to finish.
-#
-# Usage: ./tmux-wait.sh [options] [timeout_seconds] << 'EOF'
-#        command here
-#        EOF
-#
-# Options (or environment variables):
-#   -h HOST     SSH host, omit for local (env: TMUX_REMOTE_HOST)
-#   -s SESSION  tmux session name (env: TMUX_REMOTE_SESSION)
-#
-# Command is read from stdin (heredoc). This avoids shell escaping issues.
+# Output is captured and printed when command completes.
 
 set -euo pipefail
 
-# Parse options
 OPT_HOST=""
 OPT_SESSION=""
 while getopts "h:s:" opt; do
@@ -27,115 +17,69 @@ shift $((OPTIND - 1))
 
 HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
-
-# Read command from stdin (heredoc)
 CMD=$(cat)
 TIMEOUT="${1:-120}"
-POLL_INTERVAL=1
 
 [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 
-# Helper: run a command locally or over SSH depending on HOST
 run() {
-    if [ -n "$HOST" ]; then
-        ssh "$HOST" "$1"
-    else
-        bash -c "$1"
-    fi
+    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
 }
 
-# Helper: pipe stdin to a command locally or over SSH
 pipe_to() {
-    if [ -n "$HOST" ]; then
-        ssh "$HOST" "$1"
-    else
-        bash -c "$1"
-    fi
+    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
 }
 
-# Check what's currently running in the pane
-get_pane_command() {
-    run "tmux display-message -p -t $SESSION '#{pane_current_command}'"
-}
-
-# Check if pane is idle (shell prompt)
 is_idle() {
-    local cmd
-    cmd=$(get_pane_command)
-    [[ "$cmd" == "bash" || "$cmd" == "zsh" || "$cmd" == "sh" || "$cmd" == "fish" ]]
+    local procs
+    procs=$(run "ps --tty \$(tmux display-message -p -t $SESSION '#{pane_tty}' | sed 's|/dev/||') --forest -o pid 2>/dev/null | wc -l")
+    [ "$procs" -eq 2 ]
 }
 
-# Wait for pane to become idle
-wait_for_idle() {
-    local elapsed=0
-    while [ "$elapsed" -lt "$TIMEOUT" ]; do
-        if is_idle; then
-            return 0
-        fi
-        sleep "$POLL_INTERVAL"
-        elapsed=$((elapsed + POLL_INTERVAL))
-    done
-    return 1
-}
-
-# Count lines in scrollback
 count_lines() {
-    run "tmux capture-pane -t $SESSION -p -S -" | wc -l
+    run "tmux display-message -p -t $SESSION '#{history_size} #{cursor_y}'" | awk '{print $1 + $2}'
 }
 
 BUFFER_NAME="claude-${SESSION}"
 
-# Check if something is already running
-if ! is_idle; then
-    echo "[ERROR] Pane is busy ($(get_pane_command)). Wait or use a different session." >&2
-    exit 1
-fi
+is_idle || { echo "[ERROR] Pane is busy" >&2; exit 1; }
 
-# Count lines BEFORE running command
 LINES_BEFORE=$(count_lines)
 
-# Load command into a named tmux buffer (no escaping needed - travels via stdin)
 printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
 
-# Execute
+SKIP_LINES=0
 if [[ "$CMD" == *$'\n'* ]]; then
-    # Multi-line: wrap in heredoc so commands run as a batch
+    # Heredoc input: command lines + EOF line
+    SKIP_LINES=$(( $(echo "$CMD" | wc -l) + 1 ))
     run "tmux send-keys -t $SESSION 'bash << '\\''EOF'\\''' Enter"
     run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
     run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
 else
-    # Single-line: just paste and enter
     run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
     run "tmux send-keys -t $SESSION Enter"
 fi
 
-# Wait briefly for command to start
 sleep 0.3
 
-# Wait for command to complete (pane returns to idle)
-if ! wait_for_idle; then
-    echo "[TIMEOUT after ${TIMEOUT}s -- command may still be running]" >&2
-    exit 1
-fi
+# Wait for completion
+ELAPSED=0
+while ! is_idle; do
+    sleep 0.5
+    ELAPSED=$((ELAPSED + 1))
+    [ "$ELAPSED" -gt "$((TIMEOUT * 2))" ] && { echo "[TIMEOUT]" >&2; exit 1; }
+done
 
-# Small delay to ensure output is flushed
 sleep 0.1
 
-# Count lines AFTER command
-LINES_AFTER=$(count_lines)
-
-# Calculate new lines
-NEW_LINES=$((LINES_AFTER - LINES_BEFORE))
-
 # Capture output
-if [ "$NEW_LINES" -gt 1 ]; then
-    if [[ "$CMD" == *$'\n'* ]]; then
-        # Multi-line: skip heredoc input lines (CMD lines + delimiter line)
-        CMD_LINES=$(echo "$CMD" | wc -l)
-        SKIP_LINES=$((CMD_LINES + 1))
-        run "tmux capture-pane -t $SESSION -p -S -" | tail -n "$NEW_LINES" | tail -n +$((SKIP_LINES + 1)) | head -n -1
-    else
-        # Single-line: just remove the prompt
-        run "tmux capture-pane -t $SESSION -p -S -" | tail -n "$NEW_LINES" | head -n -1
+LINES_AFTER=$(count_lines)
+TOTAL_NEW=$((LINES_AFTER - LINES_BEFORE))
+
+if [ "$TOTAL_NEW" -gt "$SKIP_LINES" ]; then
+    OUTPUT_LINES=$((TOTAL_NEW - SKIP_LINES - 1))  # -1 for prompt
+    if [ "$OUTPUT_LINES" -gt 0 ]; then
+        HIST=$(run "tmux display-message -p -t $SESSION '#{history_size}'")
+        run "tmux capture-pane -t $SESSION -p -S -$HIST" | tail -n "$((OUTPUT_LINES + 1))" | head -n "$OUTPUT_LINES"
     fi
 fi
