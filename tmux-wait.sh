@@ -6,11 +6,30 @@ set -euo pipefail
 
 OPT_HOST=""
 OPT_SESSION=""
+OPT_TRUNCATE=""
+# Handle -t with optional argument (getopts can't do this natively)
+args=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -t)
+            if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
+                OPT_TRUNCATE="$2"
+                shift 2
+            else
+                OPT_TRUNCATE="3000"
+                shift
+            fi
+            ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+set -- "${args[@]}"
+
 while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
@@ -19,6 +38,10 @@ HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
 CMD=$(cat)
 TIMEOUT="${1:-120}"
+
+# Truncation: -t N limits output to N/2 chars at start + N/2 at end
+TRUNCATE_TOTAL="${OPT_TRUNCATE:-0}"
+TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
 
 [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 
@@ -89,6 +112,8 @@ sleep 0.3
 # Stream output while waiting for completion
 ELAPSED=0
 PRINTED_LINES=0
+PRINTED_CHARS=0
+TRUNCATED=0
 
 while true; do
     # Atomic snapshot: get state + output in one call
@@ -115,14 +140,36 @@ while true; do
         SKIP=$SKIP_LINES
     fi
 
-    if [ "$TOTAL_NEW" -gt "$SKIP" ]; then
+    if [ "$TOTAL_NEW" -gt "$SKIP" ] && [ "$TRUNCATED" -eq 0 ]; then
         # New lines = total - skip_command_lines - prompt (only subtract prompt if idle)
         OUTPUT_LINES=$((TOTAL_NEW - SKIP - IDLE))
 
         # Print only lines we haven't printed yet
         if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
             NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
-            echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+            NEW_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT")
+
+            if [ "$TRUNCATE_HALF" -gt 0 ]; then
+                # Truncation mode: limit chars
+                REMAINING=$((TRUNCATE_HALF - PRINTED_CHARS))
+                if [ "$REMAINING" -le 0 ]; then
+                    # Already at limit, don't print
+                    :
+                elif [ "${#NEW_OUTPUT}" -le "$REMAINING" ]; then
+                    # Fits within limit
+                    printf '%s\n' "$NEW_OUTPUT"
+                    PRINTED_CHARS=$((PRINTED_CHARS + ${#NEW_OUTPUT} + 1))
+                else
+                    # Would exceed limit - print partial and truncate
+                    printf '%s' "$NEW_OUTPUT" | head -c "$REMAINING"
+                    echo ""
+                    echo "[...truncated...]"
+                    TRUNCATED=1
+                fi
+            else
+                # No truncation - print everything
+                printf '%s\n' "$NEW_OUTPUT"
+            fi
             PRINTED_LINES=$OUTPUT_LINES
         fi
     fi
@@ -141,9 +188,32 @@ while true; do
             SKIP=$SKIP_LINES
         fi
         OUTPUT_LINES=$((TOTAL_NEW - SKIP - 1))
-        if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-            NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
-            echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+
+        if [ "$TRUNCATE_HALF" -gt 0 ]; then
+            # Truncation mode: print last N/2 chars
+            FULL_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES")
+            if [ "$TRUNCATED" -eq 1 ]; then
+                # We truncated earlier, print tail
+                printf '%s' "$FULL_OUTPUT" | tail -c "$TRUNCATE_HALF"
+                echo ""
+            elif [ "${#FULL_OUTPUT}" -gt "$TRUNCATE_TOTAL" ]; then
+                # Output grew past limit since last check
+                echo "[...truncated...]"
+                printf '%s' "$FULL_OUTPUT" | tail -c "$TRUNCATE_HALF"
+                echo ""
+            else
+                # Didn't hit the limit, print any remaining
+                if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
+                    NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
+                    echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+                fi
+            fi
+        else
+            # No truncation
+            if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
+                NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
+                echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+            fi
         fi
         break
     fi
