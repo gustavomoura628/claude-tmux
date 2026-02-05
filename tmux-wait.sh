@@ -10,15 +10,6 @@
 #   -s SESSION  tmux session name (env: TMUX_REMOTE_SESSION)
 #
 # Command is read from stdin (heredoc). This avoids shell escaping issues.
-#
-# Examples:
-#   ./tmux-wait.sh -s mysession << 'EOF'
-#   make build
-#   EOF
-#
-#   ./tmux-wait.sh -h user@server -s mysession 30 << 'EOF'
-#   if ! false; then echo "works"; fi
-#   EOF
 
 set -euo pipefail
 
@@ -87,8 +78,11 @@ wait_for_idle() {
     return 1
 }
 
-# Unique tag for this invocation
-TAG="$$-$(date +%s)"
+# Count lines in scrollback
+count_lines() {
+    run "tmux capture-pane -t $SESSION -p -S -" | wc -l
+}
+
 BUFFER_NAME="claude-${SESSION}"
 
 # Check if something is already running
@@ -97,21 +91,22 @@ if ! is_idle; then
     exit 1
 fi
 
+# Count lines BEFORE running command
+LINES_BEFORE=$(count_lines)
+
 # Load command into a named tmux buffer (no escaping needed - travels via stdin)
 printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
 
 # Execute
 if [[ "$CMD" == *$'\n'* ]]; then
     # Multi-line: wrap in heredoc so commands run as a batch
-    MARKER="__EOF_${TAG}__"
-    run "tmux send-keys -t $SESSION 'bash << '\\''$MARKER'\\''' Enter"
+    run "tmux send-keys -t $SESSION 'bash << '\\''EOF'\\''' Enter"
     run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-    run "tmux send-keys -t $SESSION Enter '$MARKER' Enter"
+    run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
 else
     # Single-line: just paste and enter
-    MARKER="__CMD_${TAG}__"
     run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-    run "tmux send-keys -t $SESSION ' #$MARKER' Enter"
+    run "tmux send-keys -t $SESSION Enter"
 fi
 
 # Wait briefly for command to start
@@ -126,9 +121,21 @@ fi
 # Small delay to ensure output is flushed
 sleep 0.1
 
-# Capture: find LAST occurrence of marker, take everything after, remove trailing prompt
-# tac reverses, awk takes lines until marker (which was after marker in original), tac restores order
-run "tmux capture-pane -t $SESSION -p -S -200" | tac | awk -v marker="$MARKER" '
-    $0 ~ marker { exit }
-    { print }
-' | tac | head -n -1
+# Count lines AFTER command
+LINES_AFTER=$(count_lines)
+
+# Calculate new lines
+NEW_LINES=$((LINES_AFTER - LINES_BEFORE))
+
+# Capture output
+if [ "$NEW_LINES" -gt 1 ]; then
+    if [[ "$CMD" == *$'\n'* ]]; then
+        # Multi-line: skip heredoc input lines (CMD lines + delimiter line)
+        CMD_LINES=$(echo "$CMD" | wc -l)
+        SKIP_LINES=$((CMD_LINES + 1))
+        run "tmux capture-pane -t $SESSION -p -S -" | tail -n "$NEW_LINES" | tail -n +$((SKIP_LINES + 1)) | head -n -1
+    else
+        # Single-line: just remove the prompt
+        run "tmux capture-pane -t $SESSION -p -S -" | tail -n "$NEW_LINES" | head -n -1
+    fi
+fi
