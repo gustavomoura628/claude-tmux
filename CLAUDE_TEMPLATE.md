@@ -51,10 +51,8 @@ ssh user@host "tmux list-sessions"
 ```bash
 # Send a command (omit ssh for local)
 ssh user@host "tmux send-keys -t session 'command' Enter"
-# Read output (-S -N for last N lines of scrollback)
-ssh user@host "tmux capture-pane -t session -p"
+# Read output (pipe to tail -N for last N lines)
+ssh user@host "tmux capture-pane -t session -p" | tail -20
 # Cancel
 ssh user@host "tmux send-keys -t session C-c"
 ```
-
-**If scrollback is cluttered**, limit capture depth with `-S -N` (e.g. `-S -20` for last 20 lines). The tmux-wait.sh script is immune to clutter since it finds output by marker.

@@ -29,7 +29,7 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] <command> [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
@@ -87,9 +87,8 @@ wait_for_idle() {
     return 1
 }
 
-# Generate unique marker (buffer uses session name - one per session, reused)
+# Unique tag for this invocation
 TAG="$$-$(date +%s)"
-START_MARKER="TMUX_CMD_${TAG}"
 BUFFER_NAME="claude-${SESSION}"
 
 # Check if something is already running
@@ -99,27 +98,37 @@ if ! is_idle; then
 fi
 
 # Load command into a named tmux buffer (no escaping needed - travels via stdin)
-# Buffer is named per-session, so parallel runs on different sessions don't conflict
 printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
 
-# Send template that retrieves from buffer and executes
-# The only thing going through send-keys is this fixed template - no user input
-run "tmux send-keys -t $SESSION 'CMD=\$(tmux show-buffer -b $BUFFER_NAME); printf \"\\033[1;36m>>> \\$ \\033[0m%s\\n\" \"\$CMD\"; printf \"\\033[30;40m%s\\033[0m\\n\" \"$START_MARKER\"; eval \"\$CMD\"' Enter"
+# Execute
+if [[ "$CMD" == *$'\n'* ]]; then
+    # Multi-line: wrap in heredoc so commands run as a batch
+    MARKER="__EOF_${TAG}__"
+    run "tmux send-keys -t $SESSION 'bash << '\\''$MARKER'\\''' Enter"
+    run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
+    run "tmux send-keys -t $SESSION Enter '$MARKER' Enter"
+else
+    # Single-line: just paste and enter
+    MARKER="__CMD_${TAG}__"
+    run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
+    run "tmux send-keys -t $SESSION ' #$MARKER' Enter"
+fi
 
-# Wait briefly for command to start (pane_current_command to change from shell)
+# Wait briefly for command to start
 sleep 0.3
 
 # Wait for command to complete (pane returns to idle)
 if ! wait_for_idle; then
     echo "[TIMEOUT after ${TIMEOUT}s -- command may still be running]" >&2
-    # Still try to capture what we have
-    run "tmux capture-pane -t $SESSION -p -S -500" | sed -n "/^${START_MARKER}$/,\$p" | tail -n +2 | tac | awk '/[^[:space:]]/{p=1} p' | tac | sed '$ d'
     exit 1
 fi
 
 # Small delay to ensure output is flushed
 sleep 0.1
 
-# Capture output from marker to end, excluding the marker line and final prompt
-# Pipeline: find marker to end | skip marker | strip trailing blanks | remove prompt line
-run "tmux capture-pane -t $SESSION -p -S -500" | sed -n "/^${START_MARKER}$/,\$p" | tail -n +2 | tac | awk '/[^[:space:]]/{p=1} p' | tac | sed '$ d'
+# Capture: find LAST occurrence of marker, take everything after, remove trailing prompt
+# tac reverses, awk takes lines until marker (which was after marker in original), tac restores order
+run "tmux capture-pane -t $SESSION -p -S -200" | tac | awk -v marker="$MARKER" '
+    $0 ~ marker { exit }
+    { print }
+' | tac | head -n -1

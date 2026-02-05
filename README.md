@@ -78,13 +78,13 @@ Passing commands as arguments (`'command'`) causes escaping issues -- characters
 
 1. Reads command from stdin (heredoc)
 2. Loads command into a named tmux buffer (one per session, no conflicts)
-3. Sends a fixed template via `send-keys` that retrieves and evals the buffer
-4. The command is displayed with a colored `>>> $` prefix before execution
-5. An invisible marker is printed for output capture
-6. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
-7. Captures output from the marker to end, strips trailing blanks and prompt
+3. Executes:
+   - **Single-line:** pastes command with a trailing `#__CMD_xxx__` marker comment
+   - **Multi-line:** wraps in `bash << '__EOF_xxx__'` heredoc so commands run as a batch
+4. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
+5. Captures output by finding the last occurrence of the marker, taking everything after it
 
-No base64 encoding, no escaping issues, clean tmux scrollback.
+No base64 encoding, no escaping issues. The unique marker (`__EOF_${PID}-${timestamp}__`) prevents collision with command content.
 
 ## Requirements
 
