@@ -162,8 +162,12 @@ while true; do
 
         # Print only lines we haven't printed yet
         if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-            NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
-            NEW_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT")
+            # Extract lines PRINTED_LINES+1 through OUTPUT_LINES
+            # tail -n TOTAL_NEW: get new lines since LINES_BEFORE
+            # tail -n +(SKIP+1): skip command/heredoc lines
+            # head -n OUTPUT_LINES: exclude prompt if idle
+            # tail -n +(PRINTED_LINES+1): skip already-printed lines
+            NEW_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "+$((PRINTED_LINES + 1))")
 
             if [ "$TRUNCATE_HALF" -gt 0 ]; then
                 # Truncation mode: limit chars
@@ -220,15 +224,13 @@ while true; do
             else
                 # Didn't hit the limit, print any remaining
                 if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-                    NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
-                    echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+                    echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "+$((PRINTED_LINES + 1))"
                 fi
             fi
         else
             # No truncation
             if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-                NEW_COUNT=$((OUTPUT_LINES - PRINTED_LINES))
-                echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "$NEW_COUNT"
+                echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES" | tail -n "+$((PRINTED_LINES + 1))"
             fi
         fi
         break

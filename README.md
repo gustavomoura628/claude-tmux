@@ -106,4 +106,3 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 
 - **Test edge cases** -- What happens with commands long enough to wrap the tmux terminal? Does line counting break? Also test if a single 10000-char output line is captured correctly with tail.
 
-- **Bug: -c mode can skip lines** -- In testing, "counting 14" was skipped when using `-c` to resume a running command. The 5-line lookback or line counting logic has an off-by-one or race condition.
