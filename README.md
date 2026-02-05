@@ -38,50 +38,45 @@ The script sends a command to a tmux session, polls until it finishes, and retur
 **Commands are passed via stdin (heredoc)** to avoid shell escaping issues:
 
 ```bash
-# Local session
-./tmux-wait.sh -s my-session << 'EOF'
+# Local session (120s timeout)
+./tmux-wait.sh -s my-session 120 << 'EOF'
 make build
 EOF
 
-# Remote session
-./tmux-wait.sh -h user@host -s my-session << 'EOF'
+# Remote session (60s timeout)
+./tmux-wait.sh -h user@host -s my-session 60 << 'EOF'
 docker compose up -d
 EOF
 
-# With timeout (default 120s)
-./tmux-wait.sh -h user@host -s my-session 60 << 'EOF'
-npm test
-EOF
-
-# Truncate output for long builds (-t defaults to 3000 chars)
-./tmux-wait.sh -s my-session -t << 'EOF'
+# Truncate output for long builds (-t defaults to 3000 chars, 300s timeout)
+./tmux-wait.sh -s my-session -t 300 << 'EOF'
 make build
 EOF
 
-# Custom truncation limit
-./tmux-wait.sh -s my-session -t 5000 << 'EOF'
+# Custom truncation limit (5000 chars, 600s timeout)
+./tmux-wait.sh -s my-session -t 5000 600 << 'EOF'
 npm install
 EOF
 
-# Continue watching an already-running command
-./tmux-wait.sh -s my-session -c
+# Continue watching an already-running command (120s timeout)
+./tmux-wait.sh -s my-session -c 120
 
-# Multi-line commands work naturally
-./tmux-wait.sh -s my-session << 'EOF'
+# Multi-line commands (60s timeout)
+./tmux-wait.sh -s my-session 60 << 'EOF'
 for i in 1 2 3; do
   echo "iteration $i"
 done
 EOF
 
-# Environment variables work too
+# Environment variables (30s timeout)
 export TMUX_REMOTE_HOST=user@host    # omit for local sessions
 export TMUX_REMOTE_SESSION=my-session
-./tmux-wait.sh << 'EOF'
+./tmux-wait.sh 30 << 'EOF'
 echo "hello from remote"
 EOF
 ```
 
-Exit 0 on completion, exit 1 on timeout.
+**Always specify a timeout.** Commands that hang will block Claude indefinitely. Exit 0 on completion, exit 1 on timeout. Use `-c` to resume watching if a command times out.
 
 ### Why heredoc?
 
@@ -110,3 +105,5 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 ## TODO
 
 - **Test edge cases** -- What happens with commands long enough to wrap the tmux terminal? Does line counting break? Also test if a single 10000-char output line is captured correctly with tail.
+
+- **Bug: -c mode can skip lines** -- In testing, "counting 14" was skipped when using `-c` to resume a running command. The 5-line lookback or line counting logic has an off-by-one or race condition.
