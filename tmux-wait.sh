@@ -7,7 +7,8 @@ set -euo pipefail
 OPT_HOST=""
 OPT_SESSION=""
 OPT_TRUNCATE=""
-# Handle -t with optional argument (getopts can't do this natively)
+OPT_CONTINUE=0
+# Handle -t and -c with optional arguments (getopts can't do this natively)
 args=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,6 +21,10 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
+        -c)
+            OPT_CONTINUE=1
+            shift
+            ;;
         *) args+=("$1"); shift ;;
     esac
 done
@@ -29,21 +34,25 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-c] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
 
 HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
-CMD=$(cat)
 TIMEOUT="${1:-120}"
+
+if [ "$OPT_CONTINUE" -eq 1 ]; then
+    CMD=""
+else
+    CMD=$(cat)
+    [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
+fi
 
 # Truncation: -t N limits output to N/2 chars at start + N/2 at end
 TRUNCATE_TOTAL="${OPT_TRUNCATE:-0}"
 TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
-
-[ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 
 run() {
     if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
@@ -82,32 +91,39 @@ count_lines() {
 
 BUFFER_NAME="claude-${SESSION}"
 
-is_idle || { echo "[ERROR] Pane is busy" >&2; exit 1; }
-
-LINES_BEFORE=$(count_lines)
-
-printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
-
-if [[ "$CMD" == *$'\n'* ]]; then
-    # Multi-line: wrap in heredoc
-    CMD_LINES=$(echo "$CMD" | wc -l)
-    # During streaming: continuation lines in TOTAL_NEW
-    # After idle: continuation lines still in TOTAL_NEW (they don't move to history like single-line command)
-    SKIP_LINES=$((CMD_LINES + 1))  # continuation prompts + EOF
-    run "tmux send-keys -t $SESSION 'bash << '\\''EOF'\\''' Enter"
-    run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-    run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
+if [ "$OPT_CONTINUE" -eq 1 ]; then
+    # Continue mode: pick up streaming from current position minus 5 lines for context
+    CURRENT=$(count_lines)
+    LINES_BEFORE=$((CURRENT > 5 ? CURRENT - 5 : 0))
+    SKIP_LINES=0
 else
-    # Single-line: SKIP varies based on timing
-    # During streaming: command line is in TOTAL_NEW (SKIP=1)
-    # After idle: command line scrolls to history, not in TOTAL_NEW (SKIP=0)
-    SKIP_LINES_STREAMING=1
-    SKIP_LINES_IDLE=0
-    run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-    run "tmux send-keys -t $SESSION Enter"
-fi
+    is_idle || { echo "[ERROR] Pane is busy" >&2; exit 1; }
 
-sleep 0.3
+    LINES_BEFORE=$(count_lines)
+
+    printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
+
+    if [[ "$CMD" == *$'\n'* ]]; then
+        # Multi-line: wrap in heredoc
+        CMD_LINES=$(echo "$CMD" | wc -l)
+        # During streaming: continuation lines in TOTAL_NEW
+        # After idle: continuation lines still in TOTAL_NEW (they don't move to history like single-line command)
+        SKIP_LINES=$((CMD_LINES + 1))  # continuation prompts + EOF
+        run "tmux send-keys -t $SESSION 'bash << '\\''EOF'\\''' Enter"
+        run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
+        run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
+    else
+        # Single-line: SKIP varies based on timing
+        # During streaming: command line is in TOTAL_NEW (SKIP=1)
+        # After idle: command line scrolls to history, not in TOTAL_NEW (SKIP=0)
+        SKIP_LINES_STREAMING=1
+        SKIP_LINES_IDLE=0
+        run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
+        run "tmux send-keys -t $SESSION Enter"
+    fi
+
+    sleep 0.3
+fi
 
 # Stream output while waiting for completion
 ELAPSED=0
