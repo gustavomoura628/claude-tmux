@@ -41,7 +41,7 @@ shift $((OPTIND - 1))
 
 HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
-TIMEOUT="${1:-120}"
+TIMEOUT="${1:-30}"
 
 if [ "$OPT_CONTINUE" -eq 1 ]; then
     CMD=""

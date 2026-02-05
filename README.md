@@ -76,7 +76,7 @@ echo "hello from remote"
 EOF
 ```
 
-**Always specify a timeout.** Commands that hang will block Claude indefinitely. Exit 0 on completion, exit 1 on timeout. Use `-c` to resume watching if a command times out.
+**Always specify a timeout.** Default is 30s -- intentionally short to encourage explicit timeouts. Commands that hang will block Claude indefinitely. Exit 0 on completion, exit 1 on timeout. Use `-c` to resume watching if a command times out.
 
 ### Why heredoc?
 
