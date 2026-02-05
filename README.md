@@ -97,3 +97,5 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 ## TODO
 
 - **Quiet mode for chatty commands** -- Streaming output is great for visibility, but long builds (ESPHome, npm, etc.) can dump thousands of lines into Claude's context window. Add a `-q` flag to suppress streaming and only return final output, or `-t N` to only stream the last N lines. Alternatively, auto-throttle: if more than ~20 lines have been streamed, stop streaming and only print the last ~10 lines when the command finishes.
+
+- **Test edge cases** -- What happens with commands long enough to wrap the tmux terminal? Does line counting break? Also test if a single 10000-char output line is captured correctly with tail.
