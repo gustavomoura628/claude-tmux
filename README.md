@@ -35,28 +35,53 @@ Copy or symlink `tmux-wait.sh` into your project, then paste the contents of `CL
 
 The script sends a command to a tmux session, polls until it finishes, and returns clean output.
 
+**Commands are passed via stdin (heredoc)** to avoid shell escaping issues:
+
 ```bash
 # Local session
-./tmux-wait.sh -s my-session 'make build' 60
+./tmux-wait.sh -s my-session << 'EOF'
+make build
+EOF
 
 # Remote session
-./tmux-wait.sh -h user@host -s my-session 'docker compose up -d' 120
+./tmux-wait.sh -h user@host -s my-session << 'EOF'
+docker compose up -d
+EOF
 
-# With environment variables
+# With timeout (default 120s)
+./tmux-wait.sh -h user@host -s my-session 60 << 'EOF'
+npm test
+EOF
+
+# Multi-line commands work naturally
+./tmux-wait.sh -s my-session << 'EOF'
+for i in 1 2 3; do
+  echo "iteration $i"
+done
+EOF
+
+# Environment variables work too
 export TMUX_REMOTE_HOST=user@host    # omit for local sessions
 export TMUX_REMOTE_SESSION=my-session
-./tmux-wait.sh 'npm test' 30
+./tmux-wait.sh << 'EOF'
+echo "hello from remote"
+EOF
 ```
 
-Default timeout is 120 seconds. Exit 0 on completion, exit 1 on timeout.
+Exit 0 on completion, exit 1 on timeout.
+
+### Why heredoc?
+
+Passing commands as arguments (`'command'`) causes escaping issues -- characters like `!` get mangled through the shell layers. Heredoc input passes through cleanly, giving full shell compatibility including `if ! cmd`, `echo "hello!"`, etc.
 
 ### How it works
 
-1. Sends a no-op start marker (`: TMUX_START_xxx`) to the session
-2. Sends the command chained with an echo end marker: `(cmd); echo TMUX_END_xxx`
-3. Polls `tmux capture-pane` every 2 seconds
-4. The end marker only appears as echo output after the command completes -- queued keystrokes get echoed during execution, but the echo output only appears once the shell processes it
-5. Returns just the command's output, stripped of all markers
+1. Reads command from stdin (heredoc)
+2. Base64 encodes and sends to tmux via `send-keys`
+3. The command is displayed with a colored `>>> $` prefix before execution
+4. An invisible marker is printed after the command echo
+5. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
+6. Captures output from the marker to end, strips trailing blanks and prompt
 
 ## Requirements
 

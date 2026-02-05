@@ -14,12 +14,23 @@ Use tmux for anything interactive, long-running, or where persistent state matte
 Do most work in a single primary session. If you need parallel execution, spawn extra sessions named `claude-session-0`, `claude-session-1`, etc. Reuse existing sessions instead of killing and creating new ones -- check `tmux list-sessions` first. Only spawn a new session when you genuinely need parallelism.
 
 **Run a command and wait for completion (preferred):**
+```bash
+# Local:
+./tmux-wait.sh -s SESSION << 'EOF'
+command here
+EOF
+
+# Remote:
+./tmux-wait.sh -h USER@HOST -s SESSION << 'EOF'
+command here
+EOF
+
+# With timeout (before heredoc):
+./tmux-wait.sh -h USER@HOST -s SESSION 60 << 'EOF'
+command here
+EOF
 ```
-./tmux-wait.sh -s SESSION 'command' [timeout_seconds]
-# or for remote:
-./tmux-wait.sh -h USER@HOST -s SESSION 'command' [timeout_seconds]
-```
-Sends the command, polls until it finishes, prints only the output. Default timeout 120s. Exit 1 on timeout.
+Pass commands via heredoc to avoid shell escaping issues. Polls until finished, prints only output. Default timeout 120s. Exit 1 on timeout.
 
 **Spawn a new session** when you need parallelism:
 ```bash
