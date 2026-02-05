@@ -93,3 +93,7 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 - tmux on the target machine
 - bash on both machines
 - SSH key auth (for remote sessions)
+
+## TODO
+
+- **Quiet mode for chatty commands** -- Streaming output is great for visibility, but long builds (ESPHome, npm, etc.) can dump thousands of lines into Claude's context window. Add a `-q` flag to suppress streaming and only return final output, or `-t N` to only stream the last N lines.
