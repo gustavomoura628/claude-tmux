@@ -97,6 +97,11 @@ Passing commands as arguments (`'command'`) causes escaping issues -- characters
 
 The marker-based approach survives tmux scrollback eviction (unlike line counting) and always finds the correct command output even with a long scrollback history.
 
+## TODO
+
+- **Send keys mode** -- wrap `tmux send-keys` so you can send raw keystrokes (Ctrl-C, arrow keys, etc.) without running a command. tmux already supports this, but having it in the script keeps all tmux interaction in one place.
+- **Rename the script** -- `tmux-wait` undersells it now that it does dispatch, streaming, peek, continue, truncation, and remote-side extraction. Needs a better name.
+
 ## Requirements
 
 - tmux on the target machine
