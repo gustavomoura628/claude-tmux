@@ -237,5 +237,25 @@ while true; do
 
     sleep 0.5
     ELAPSED=$((ELAPSED + 1))
-    [ "$ELAPSED" -gt "$((TIMEOUT * 2))" ] && { echo "[TIMEOUT]" >&2; exit 1; }
+    if [ "$ELAPSED" -gt "$((TIMEOUT * 2))" ]; then
+        # On timeout with truncation, print the tail end of what we have so far
+        if [ "$TRUNCATE_HALF" -gt 0 ] && [ "$TRUNCATED" -eq 1 ]; then
+            SNAP=$(snapshot)
+            LINES_NOW=$(echo "$SNAP" | grep -m1 '^LINES=' | cut -d= -f2)
+            OUTPUT=$(echo "$SNAP" | sed -n "/$DELIM/,\$p" | tail -n +2)
+            TOTAL_NEW=$((LINES_NOW - LINES_BEFORE))
+            if [ -n "${SKIP_LINES_STREAMING:-}" ]; then
+                SKIP=$SKIP_LINES_STREAMING
+            else
+                SKIP=$SKIP_LINES
+            fi
+            OUTPUT_LINES=$((TOTAL_NEW - SKIP))
+            if [ "$OUTPUT_LINES" -gt 0 ]; then
+                FULL_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES")
+                echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
+            fi
+        fi
+        echo "[TIMEOUT]" >&2
+        exit 1
+    fi
 done
