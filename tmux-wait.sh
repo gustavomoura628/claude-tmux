@@ -255,7 +255,7 @@ while true; do
                 echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
             fi
         fi
-        echo "[TIMEOUT]" >&2
-        exit 1
+        echo "[TIMEOUT after ${TIMEOUT}s]"
+        exit 0
     fi
 done
