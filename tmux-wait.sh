@@ -2,7 +2,7 @@
 # tmux-wait.sh -- Send a command to a tmux session, wait for it to finish.
 # Output streams as it appears, with final capture when command completes.
 
-set -euo pipefail
+set -eu
 
 OPT_HOST=""
 OPT_SESSION=""
@@ -66,16 +66,18 @@ DELIM="__SNAPSHOT_${$}_$$__"
 
 # Atomic snapshot: returns PROCS, LINES, and full pane output in one SSH call
 # This avoids race conditions between checking state and capturing output
+# Uses -J to join wrapped lines so line counting is consistent
 snapshot() {
     run "
         TTY=\$(tmux display-message -p -t $SESSION '#{pane_tty}' | sed 's|/dev/||')
         PROCS=\$(ps --tty \$TTY --forest -o pid 2>/dev/null | wc -l)
         HIST=\$(tmux display-message -p -t $SESSION '#{history_size}')
-        CURSOR=\$(tmux display-message -p -t $SESSION '#{cursor_y}')
+        CAPTURE=\$(tmux capture-pane -t $SESSION -p -J -S -\$HIST)
+        LINES=\$(echo \"\$CAPTURE\" | wc -l)
         echo \"PROCS=\$PROCS\"
-        echo \"LINES=\$((HIST + CURSOR))\"
+        echo \"LINES=\$LINES\"
         echo \"$DELIM\"
-        tmux capture-pane -t $SESSION -p -S -\$HIST
+        echo \"\$CAPTURE\"
     "
 }
 
@@ -86,7 +88,7 @@ is_idle() {
 }
 
 count_lines() {
-    run "tmux display-message -p -t $SESSION '#{history_size} #{cursor_y}'" | awk '{print $1 + $2}'
+    run "HIST=\$(tmux display-message -p -t $SESSION '#{history_size}'); tmux capture-pane -t $SESSION -p -J -S -\$HIST | wc -l"
 }
 
 BUFFER_NAME="claude-${SESSION}"
@@ -135,9 +137,9 @@ while true; do
     # Atomic snapshot: get state + output in one call
     SNAP=$(snapshot)
 
-    # Parse header
-    PROCS=$(echo "$SNAP" | grep '^PROCS=' | cut -d= -f2)
-    LINES_NOW=$(echo "$SNAP" | grep '^LINES=' | cut -d= -f2)
+    # Parse header (head -1 to avoid matching output content)
+    PROCS=$(echo "$SNAP" | grep -m1 '^PROCS=' | cut -d= -f2)
+    LINES_NOW=$(echo "$SNAP" | grep -m1 '^LINES=' | cut -d= -f2)
 
     # Extract output (everything after delimiter)
     OUTPUT=$(echo "$SNAP" | sed -n "/$DELIM/,\$p" | tail -n +2)
@@ -180,9 +182,8 @@ while true; do
                     printf '%s\n' "$NEW_OUTPUT"
                     PRINTED_CHARS=$((PRINTED_CHARS + ${#NEW_OUTPUT} + 1))
                 else
-                    # Would exceed limit - print partial and truncate
-                    printf '%s' "$NEW_OUTPUT" | head -c "$REMAINING"
-                    echo ""
+                    # Would exceed limit - print partial and truncate (bash substring to avoid SIGPIPE)
+                    echo "${NEW_OUTPUT:0:$REMAINING}"
                     echo "[...truncated...]"
                     TRUNCATED=1
                 fi
@@ -198,7 +199,7 @@ while true; do
         # Process exited - but output may still be flushing. One more capture after brief delay.
         sleep 0.1
         SNAP=$(snapshot)
-        LINES_NOW=$(echo "$SNAP" | grep '^LINES=' | cut -d= -f2)
+        LINES_NOW=$(echo "$SNAP" | grep -m1 '^LINES=' | cut -d= -f2)
         OUTPUT=$(echo "$SNAP" | sed -n "/$DELIM/,\$p" | tail -n +2)
         TOTAL_NEW=$((LINES_NOW - LINES_BEFORE))
         # Use idle SKIP value
@@ -213,14 +214,12 @@ while true; do
             # Truncation mode: print last N/2 chars
             FULL_OUTPUT=$(echo "$OUTPUT" | tail -n "$TOTAL_NEW" | tail -n "+$((SKIP + 1))" | head -n "$OUTPUT_LINES")
             if [ "$TRUNCATED" -eq 1 ]; then
-                # We truncated earlier, print tail
-                printf '%s' "$FULL_OUTPUT" | tail -c "$TRUNCATE_HALF"
-                echo ""
+                # We truncated earlier, print tail (bash substring to avoid SIGPIPE)
+                echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
             elif [ "${#FULL_OUTPUT}" -gt "$TRUNCATE_TOTAL" ]; then
                 # Output grew past limit since last check
                 echo "[...truncated...]"
-                printf '%s' "$FULL_OUTPUT" | tail -c "$TRUNCATE_HALF"
-                echo ""
+                echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
             else
                 # Didn't hit the limit, print any remaining
                 if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
