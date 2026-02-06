@@ -95,23 +95,23 @@ SNAP_DELIM="__SNAPSHOT_${$}_$$__"
 # output but invisible to execution. Survives tmux scrollback eviction.
 MARKER="__TMUX_MARKER__"
 
-# Atomic snapshot: returns PROCS and full pane output in one SSH call
+# Atomic snapshot: returns IDLE status and full pane output in one SSH call.
+# Idle = the shell (pane_pid) has no child processes.
 snapshot() {
     run "
-        TTY=\$(tmux display-message -p -t $SESSION '#{pane_tty}' | sed 's|/dev/||')
-        PROCS=\$(ps --tty \$TTY --forest -o pid 2>/dev/null | wc -l)
+        PANE_PID=\$(tmux display-message -p -t $SESSION '#{pane_pid}')
+        IDLE=0
+        pgrep --parent \$PANE_PID >/dev/null 2>&1 || IDLE=1
         HIST=\$(tmux display-message -p -t $SESSION '#{history_size}')
         CAPTURE=\$(tmux capture-pane -t $SESSION -p -J -S -\$HIST)
-        echo \"PROCS=\$PROCS\"
+        echo \"IDLE=\$IDLE\"
         echo \"$SNAP_DELIM\"
         echo \"\$CAPTURE\"
     "
 }
 
 is_idle() {
-    local procs
-    procs=$(run "ps --tty \$(tmux display-message -p -t $SESSION '#{pane_tty}' | sed 's|/dev/||') --forest -o pid 2>/dev/null | wc -l")
-    [ "$procs" -eq 2 ]
+    run "pgrep --parent \$(tmux display-message -p -t $SESSION '#{pane_pid}') >/dev/null 2>&1" && return 1 || return 0
 }
 
 # Extract command output from a snapshot.
@@ -184,11 +184,8 @@ TRUNCATED=0
 while true; do
     SNAP=$(snapshot)
 
-    PROCS=$(echo "$SNAP" | grep -m1 '^PROCS=' | cut -d= -f2)
+    IDLE=$(echo "$SNAP" | grep -m1 '^IDLE=' | cut -d= -f2)
     OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-
-    IDLE=0
-    [ "$PROCS" -eq 2 ] && IDLE=1
 
     # Extract output after marker (works for both normal and continue modes)
     CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" "$IDLE")
