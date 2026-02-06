@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tmux-wait.sh -- Send a command to a tmux session, wait for it to finish.
+# tmux-exec.sh -- Send a command to a tmux session, wait for it to finish.
 # Output streams as it appears, with final capture when command completes.
 
 set -eu

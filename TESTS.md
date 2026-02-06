@@ -1,4 +1,4 @@
-# tmux-wait.sh Test Suite
+# tmux-exec.sh Test Suite
 
 Run all tests against a live tmux session. Replace `-h USER@HOST -s SESSION` with your session.
 
@@ -7,7 +7,7 @@ Run all tests against a live tmux session. Replace `-h USER@HOST -s SESSION` wit
 Between each test, ensure the pane is idle (no running commands). If a previous test timed out, run:
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -c 60
+./tmux-exec.sh -h HOST -s SESSION -c 60
 ```
 
 ## 1. Basic Output
@@ -15,7 +15,7 @@ Between each test, ensure the pane is idle (no running commands). If a previous 
 ### 1a. Single-line command
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 echo "AAA"; echo "BBB"; echo "CCC"
 EOF
 ```
@@ -25,7 +25,7 @@ EOF
 ### 1b. Multi-line command
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 for i in 1 2 3; do
   echo "line $i"
 done
@@ -37,7 +37,7 @@ EOF
 ### 1c. No output
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 sleep 1
 EOF
 ```
@@ -49,7 +49,7 @@ EOF
 ### 2a. Slow output (0.5s per line)
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 for i in $(seq 1 10); do echo "line $i"; sleep 0.5; done
 EOF
 ```
@@ -59,7 +59,7 @@ EOF
 ### 2b. Fast output (0.1s per line)
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 for i in $(seq 1 10); do echo "line $i"; sleep 0.1; done
 EOF
 ```
@@ -72,7 +72,7 @@ EOF
 
 ```bash
 for run in $(seq 1 10); do
-  RESULT=$(./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+  RESULT=$(./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 for i in $(seq 1 50); do echo "line $i"; done
 EOF
 )
@@ -88,7 +88,7 @@ done
 ### 4a. Default truncation (2000 chars)
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION 15 << 'EOF'
 for i in $(seq 1 50); do echo "line $i: padding_$(head -c 50 /dev/urandom | base64 | tr -d '\n')"; done
 EOF
 ```
@@ -98,7 +98,7 @@ EOF
 ### 4b. Custom truncation (-t N)
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -t 200 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -t 200 15 << 'EOF'
 for i in $(seq 1 50); do echo "trunc test $i"; done
 EOF
 ```
@@ -108,7 +108,7 @@ EOF
 ### 4c. No truncation (-T)
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 for i in $(seq 1 50); do echo "line $i"; done
 EOF
 ```
@@ -118,7 +118,7 @@ EOF
 ### 4d. Truncation with long wrapped lines
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -t 5000 30 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -t 5000 30 << 'EOF'
 for i in $(seq 1 100); do echo "line $i: $(head -c 300 /dev/urandom | base64 | tr -d '\n')"; sleep 0.05; done
 EOF
 ```
@@ -130,7 +130,7 @@ EOF
 ### 5a. Basic timeout
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 5 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 5 << 'EOF'
 for i in $(seq 1 100); do echo "line $i"; sleep 0.3; done
 EOF
 ```
@@ -140,7 +140,7 @@ EOF
 ### 5b. Timeout with truncation shows tail
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -t 500 8 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -t 500 8 << 'EOF'
 for i in $(seq 1 100); do echo "line $i: $(head -c 100 /dev/urandom | base64 | tr -d '\n')"; sleep 0.3; done
 EOF
 ```
@@ -153,7 +153,7 @@ EOF
 
 ```bash
 # Step 1: start command, let it timeout
-./tmux-wait.sh -h HOST -s SESSION -T 5 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 5 << 'EOF'
 for i in $(seq 1 100); do echo "line $i"; sleep 0.3; done
 EOF
 
@@ -161,7 +161,7 @@ EOF
 sleep 10
 
 # Step 3: continue watching
-./tmux-wait.sh -h HOST -s SESSION -c -T 30
+./tmux-exec.sh -h HOST -s SESSION -c -T 30
 ```
 
 **Expected:** Step 1 shows lines 1-~16 + `[TIMEOUT after 5s]`. Step 3 picks up near the current position and streams remaining lines through 100.
@@ -170,7 +170,7 @@ sleep 10
 
 ```bash
 # Step 1: start with truncation, let it timeout
-./tmux-wait.sh -h HOST -s SESSION -t 500 5 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -t 500 5 << 'EOF'
 for i in $(seq 1 100); do echo "line $i: $(head -c 100 /dev/urandom | base64 | tr -d '\n')"; sleep 0.3; done
 EOF
 
@@ -178,7 +178,7 @@ EOF
 sleep 10
 
 # Step 3: continue with truncation
-./tmux-wait.sh -h HOST -s SESSION -c -t 500 30
+./tmux-exec.sh -h HOST -s SESSION -c -t 500 30
 ```
 
 **Expected:** Step 3 picks up near current position and shows truncated output through line 100.
@@ -188,7 +188,7 @@ sleep 10
 ### 7a. Command with special characters
 
 ```bash
-./tmux-wait.sh -h HOST -s SESSION -T 15 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 15 << 'EOF'
 echo "hello!"; echo '$HOME'; echo "line with \"quotes\""
 EOF
 ```
@@ -203,7 +203,7 @@ ssh HOST "tmux send-keys -t SESSION 'sleep 30' Enter"
 sleep 1
 
 # Try to run a command:
-./tmux-wait.sh -h HOST -s SESSION -T 5 << 'EOF'
+./tmux-exec.sh -h HOST -s SESSION -T 5 << 'EOF'
 echo "should not run"
 EOF
 ```
