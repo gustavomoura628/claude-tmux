@@ -61,6 +61,9 @@ EOF
 # Continue watching a timed-out command (picks up where you left off)
 ./tmux-wait.sh -s my-session -c 120
 
+# Peek at the last 500 chars on screen (no command, no marker needed)
+./tmux-wait.sh -s my-session -p 500
+
 # Multi-line commands (60s timeout)
 ./tmux-wait.sh -s my-session 60 << 'EOF'
 for i in 1 2 3; do
@@ -100,8 +103,4 @@ The marker-based approach survives tmux scrollback eviction (unlike line countin
 - tmux on the target machine
 - bash on both machines
 - SSH key auth (for remote sessions)
-
-## TODO
-
-- **Peek flag** -- Add a flag like `-p [N]` to just grab the last N characters from the terminal without running a command. Useful for checking what's on screen when something goes wrong.
 

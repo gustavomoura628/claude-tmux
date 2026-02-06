@@ -8,7 +8,8 @@ OPT_HOST=""
 OPT_SESSION=""
 OPT_TRUNCATE="2000"
 OPT_CONTINUE=0
-# Handle -t, -T, and -c with optional arguments (getopts can't do this natively)
+OPT_PEEK=""
+# Handle -t, -T, -c, -p with optional arguments (getopts can't do this natively)
 args=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,6 +30,15 @@ while [[ $# -gt 0 ]]; do
             OPT_CONTINUE=1
             shift
             ;;
+        -p)
+            if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
+                OPT_PEEK="$2"
+                shift 2
+            else
+                OPT_PEEK="2000"
+                shift
+            fi
+            ;;
         *) args+=("$1"); shift ;;
     esac
 done
@@ -38,7 +48,7 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-T] [-c] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-T] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
@@ -47,7 +57,9 @@ HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
 TIMEOUT="${1:-30}"
 
-if [ "$OPT_CONTINUE" -eq 1 ]; then
+if [ -n "$OPT_PEEK" ]; then
+    CMD=""
+elif [ "$OPT_CONTINUE" -eq 1 ]; then
     CMD=""
 else
     CMD=$(cat)
@@ -65,6 +77,17 @@ run() {
 pipe_to() {
     if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
 }
+
+# Peek mode: grab last N chars from the pane and exit. No command, no marker.
+if [ -n "$OPT_PEEK" ]; then
+    HIST=$(run "tmux display-message -p -t $SESSION '#{history_size}'")
+    CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -$HIST")
+    if [ -z "$CAPTURE" ]; then
+        exit 0
+    fi
+    echo "${CAPTURE: -$OPT_PEEK}"
+    exit 0
+fi
 
 SNAP_DELIM="__SNAPSHOT_${$}_$$__"
 
