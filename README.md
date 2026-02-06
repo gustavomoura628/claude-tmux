@@ -48,8 +48,8 @@ EOF
 docker compose up -d
 EOF
 
-# Truncate output for long builds (-t defaults to 3000 chars, 300s timeout)
-./tmux-wait.sh -s my-session -t 300 << 'EOF'
+# Disable truncation (output is truncated to 2000 chars by default)
+./tmux-wait.sh -s my-session -T 300 << 'EOF'
 make build
 EOF
 
@@ -58,7 +58,7 @@ EOF
 npm install
 EOF
 
-# Continue watching an already-running command (120s timeout)
+# Continue watching a timed-out command (picks up where you left off)
 ./tmux-wait.sh -s my-session -c 120
 
 # Multi-line commands (60s timeout)
@@ -76,7 +76,7 @@ echo "hello from remote"
 EOF
 ```
 
-**Always specify a timeout.** Default is 30s -- intentionally short to encourage explicit timeouts. Commands that hang will block Claude indefinitely. Exit 0 on completion, exit 1 on timeout. Use `-c` to resume watching if a command times out.
+**Always specify a timeout.** Default is 30s -- intentionally short to encourage explicit timeouts. Commands that hang will block Claude indefinitely. Use `-c` to resume watching if a command times out.
 
 ### Why heredoc?
 
@@ -85,16 +85,15 @@ Passing commands as arguments (`'command'`) causes escaping issues -- characters
 ### How it works
 
 1. Reads command from stdin (heredoc)
-2. Counts scrollback lines before execution
-3. Loads command into a named tmux buffer (one per session, no conflicts)
-4. Executes:
-   - **Single-line:** pastes command and presses Enter
-   - **Multi-line:** wraps in `bash << 'EOF'` heredoc so commands run as a batch
-5. Polls `pane_current_command` until the shell returns to idle (bash/zsh/etc)
-6. Counts scrollback lines after execution
-7. Captures only the new lines (minus the prompt)
+2. Loads command into a named tmux buffer (one per session, no conflicts)
+3. Executes with a `#__TMUX_MARKER__` comment appended to the command line:
+   - **Single-line:** pastes command + marker comment, presses Enter
+   - **Multi-line:** wraps in `bash << 'EOF' #__TMUX_MARKER__` heredoc
+4. Streams output by polling `capture-pane` and extracting lines after the marker
+5. Detects completion by counting processes on the pane's TTY (idle = shell only)
+6. Does a final trailing capture to catch any output that flushed after the last poll
 
-No markers in scrollback, no escaping issues. Clean output capture via line counting.
+The marker-based approach survives tmux scrollback eviction (unlike line counting) and always finds the correct command output even with a long scrollback history.
 
 ## Requirements
 
@@ -103,8 +102,6 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 - SSH key auth (for remote sessions)
 
 ## TODO
-
-- ~~**Test edge cases**~~ -- Wrapped lines were breaking line counting (`history_size` counts logical lines, `cursor_y` counts display rows). Fixed by using `capture-pane -J` to join wrapped lines. Tested with 100x 400-char lines.
 
 - **Peek flag** -- Add a flag like `-p [N]` to just grab the last N characters from the terminal without running a command. Useful for checking what's on screen when something goes wrong.
 
