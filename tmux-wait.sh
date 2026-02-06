@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
                 OPT_TRUNCATE="$2"
                 shift 2
             else
-                OPT_TRUNCATE="3000"
+                OPT_TRUNCATE="2000"
                 shift
             fi
             ;;
