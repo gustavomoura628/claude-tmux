@@ -30,7 +30,7 @@ EOF
 command here
 EOF
 ```
-Pass commands via heredoc to avoid shell escaping issues. Polls until finished, streams output as it appears. Default timeout 30s. Output truncated to 2000 chars by default (`-T` to disable, `-t N` for custom limit). Use `-c` to continue watching a timed-out command.
+Pass commands via heredoc to avoid shell escaping issues. Polls until finished, streams output as it appears. Default timeout 30s. Output truncated to 2000 chars by default (`-T` to disable, `-t N` for custom limit). Use `-c` to continue watching a timed-out command. Use `-p [N]` to peek at the last N chars on screen without running a command (default 2000).
 
 **Spawn a new session** when you need parallelism:
 ```bash
