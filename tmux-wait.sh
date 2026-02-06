@@ -70,7 +70,7 @@ SNAP_DELIM="__SNAPSHOT_${$}_$$__"
 
 # Marker appended as a comment to the command line. Greppable in capture-pane
 # output but invisible to execution. Survives tmux scrollback eviction.
-MARKER="__TMUX_MARKER_${RANDOM}${RANDOM}__"
+MARKER="__TMUX_MARKER__"
 
 # Atomic snapshot: returns PROCS and full pane output in one SSH call
 snapshot() {
@@ -96,8 +96,12 @@ is_idle() {
 # skips heredoc body (skip_top) and prompt line if idle (skip_bottom).
 extract_output() {
     local output="$1" skip_top="$2" skip_bottom="$3"
-    local after_marker
-    after_marker=$(echo "$output" | sed -n "/$MARKER/,\$p" | tail -n +2)
+    local marker_line after_marker
+    marker_line=$(echo "$output" | grep -n "$MARKER" | tail -1 | cut -d: -f1)
+    if [ -z "$marker_line" ]; then
+        return
+    fi
+    after_marker=$(echo "$output" | tail -n "+$((marker_line + 1))")
     if [ -z "$after_marker" ]; then
         return
     fi
@@ -113,9 +117,19 @@ extract_output() {
 BUFFER_NAME="claude-${SESSION}"
 
 if [ "$OPT_CONTINUE" -eq 1 ]; then
-    # Continue mode: no marker, use line-count fallback
-    MARKER=""
-    CONTINUE_PRINTED=0
+    # Continue mode: reuse the marker from the original command.
+    # Do an initial snapshot to figure out current output size, then
+    # set PRINTED_LINES to start from 5 lines back for context.
+    SKIP_TOP=0
+    INIT_SNAP=$(snapshot)
+    INIT_OUTPUT=$(echo "$INIT_SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
+    INIT_CMD_OUTPUT=$(extract_output "$INIT_OUTPUT" 0 0)
+    if [ -n "$INIT_CMD_OUTPUT" ]; then
+        INIT_LINES=$(echo "$INIT_CMD_OUTPUT" | wc -l)
+        CONTINUE_START=$((INIT_LINES > 5 ? INIT_LINES - 5 : 0))
+    else
+        CONTINUE_START=0
+    fi
 else
     is_idle || { echo "[ERROR] Pane is busy" >&2; exit 1; }
 
@@ -140,7 +154,7 @@ fi
 
 # Stream output while waiting for completion
 ELAPSED=0
-PRINTED_LINES=0
+PRINTED_LINES=${CONTINUE_START:-0}
 PRINTED_CHARS=0
 TRUNCATED=0
 
@@ -153,104 +167,64 @@ while true; do
     IDLE=0
     [ "$PROCS" -eq 2 ] && IDLE=1
 
-    if [ "$OPT_CONTINUE" -eq 1 ]; then
-        # Continue mode: no marker, just stream everything new
-        TOTAL=$(echo "$OUTPUT" | wc -l)
-        if [ "$CONTINUE_PRINTED" -eq 0 ]; then
-            CONTEXT=$(echo "$OUTPUT" | tail -5)
-            if [ -n "$CONTEXT" ]; then
-                printf '%s\n' "$CONTEXT"
-            fi
-            CONTINUE_PRINTED=$TOTAL
-        elif [ "$TOTAL" -gt "$CONTINUE_PRINTED" ]; then
-            NEW_COUNT=$((TOTAL - CONTINUE_PRINTED))
-            NEW_OUTPUT=$(echo "$OUTPUT" | tail -n "$NEW_COUNT")
-            if [ -n "$NEW_OUTPUT" ] && [ "$TRUNCATED" -eq 0 ]; then
-                if [ "$TRUNCATE_HALF" -gt 0 ]; then
-                    REMAINING=$((TRUNCATE_HALF - PRINTED_CHARS))
-                    if [ "$REMAINING" -gt 0 ]; then
-                        if [ "${#NEW_OUTPUT}" -le "$REMAINING" ]; then
-                            printf '%s\n' "$NEW_OUTPUT"
-                            PRINTED_CHARS=$((PRINTED_CHARS + ${#NEW_OUTPUT} + 1))
-                        else
-                            echo "${NEW_OUTPUT:0:$REMAINING}"
-                            echo "[...truncated...]"
-                            TRUNCATED=1
-                        fi
-                    fi
-                else
-                    printf '%s\n' "$NEW_OUTPUT"
-                fi
-            fi
-            CONTINUE_PRINTED=$TOTAL
-        fi
+    # Extract output after marker (works for both normal and continue modes)
+    CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" "$IDLE")
 
-        if [ "$IDLE" -eq 1 ]; then
-            if [ "$TRUNCATE_HALF" -gt 0 ] && [ "$TRUNCATED" -eq 1 ]; then
-                echo "${OUTPUT: -$TRUNCATE_HALF}"
-            fi
-            break
-        fi
-    else
-        # Normal mode: extract output after marker
-        CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" "$IDLE")
+    if [ -n "$CMD_OUTPUT" ] && [ "$TRUNCATED" -eq 0 ]; then
+        OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
 
-        if [ -n "$CMD_OUTPUT" ] && [ "$TRUNCATED" -eq 0 ]; then
-            OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
-
-            if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-                NEW_OUTPUT=$(echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))")
-
-                if [ "$TRUNCATE_HALF" -gt 0 ]; then
-                    REMAINING=$((TRUNCATE_HALF - PRINTED_CHARS))
-                    if [ "$REMAINING" -le 0 ]; then
-                        :
-                    elif [ "${#NEW_OUTPUT}" -le "$REMAINING" ]; then
-                        printf '%s\n' "$NEW_OUTPUT"
-                        PRINTED_CHARS=$((PRINTED_CHARS + ${#NEW_OUTPUT} + 1))
-                    else
-                        echo "${NEW_OUTPUT:0:$REMAINING}"
-                        echo "[...truncated...]"
-                        TRUNCATED=1
-                    fi
-                else
-                    printf '%s\n' "$NEW_OUTPUT"
-                fi
-                PRINTED_LINES=$OUTPUT_LINES
-            fi
-        fi
-
-        if [ "$IDLE" -eq 1 ]; then
-            # Trailing capture: output may still be flushing
-            sleep 0.1
-            SNAP=$(snapshot)
-            OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-            CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 1)
+        if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
+            NEW_OUTPUT=$(echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))")
 
             if [ "$TRUNCATE_HALF" -gt 0 ]; then
-                if [ -n "$CMD_OUTPUT" ]; then
-                    if [ "$TRUNCATED" -eq 1 ]; then
-                        echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
-                    elif [ "${#CMD_OUTPUT}" -gt "$TRUNCATE_TOTAL" ]; then
-                        echo "[...truncated...]"
-                        echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
-                    else
-                        OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
-                        if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
-                            echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))"
-                        fi
-                    fi
+                REMAINING=$((TRUNCATE_HALF - PRINTED_CHARS))
+                if [ "$REMAINING" -le 0 ]; then
+                    :
+                elif [ "${#NEW_OUTPUT}" -le "$REMAINING" ]; then
+                    printf '%s\n' "$NEW_OUTPUT"
+                    PRINTED_CHARS=$((PRINTED_CHARS + ${#NEW_OUTPUT} + 1))
+                else
+                    echo "${NEW_OUTPUT:0:$REMAINING}"
+                    echo "[...truncated...]"
+                    TRUNCATED=1
                 fi
             else
-                if [ -n "$CMD_OUTPUT" ]; then
+                printf '%s\n' "$NEW_OUTPUT"
+            fi
+            PRINTED_LINES=$OUTPUT_LINES
+        fi
+    fi
+
+    if [ "$IDLE" -eq 1 ]; then
+        # Trailing capture: output may still be flushing
+        sleep 0.1
+        SNAP=$(snapshot)
+        OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
+        CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 1)
+
+        if [ "$TRUNCATE_HALF" -gt 0 ]; then
+            if [ -n "$CMD_OUTPUT" ]; then
+                if [ "$TRUNCATED" -eq 1 ]; then
+                    echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
+                elif [ "${#CMD_OUTPUT}" -gt "$TRUNCATE_TOTAL" ]; then
+                    echo "[...truncated...]"
+                    echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
+                else
                     OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
                     if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
                         echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))"
                     fi
                 fi
             fi
-            break
+        else
+            if [ -n "$CMD_OUTPUT" ]; then
+                OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
+                if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
+                    echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))"
+                fi
+            fi
         fi
+        break
     fi
 
     sleep 0.5
@@ -260,11 +234,7 @@ while true; do
         if [ "$TRUNCATE_HALF" -gt 0 ] && [ "$TRUNCATED" -eq 1 ]; then
             SNAP=$(snapshot)
             OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-            if [ "$OPT_CONTINUE" -eq 1 ]; then
-                FULL_OUTPUT="$OUTPUT"
-            else
-                FULL_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 0)
-            fi
+            FULL_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 0)
             if [ -n "$FULL_OUTPUT" ]; then
                 echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
             fi
