@@ -88,13 +88,12 @@ Passing commands as arguments (`'command'`) causes escaping issues -- characters
 ### How it works
 
 1. Reads command from stdin (heredoc)
-2. Loads command into a named tmux buffer (one per session, no conflicts)
-3. Executes with a `#__TMUX_MARKER__` comment appended to the command line:
+2. Checks the pane is idle, loads command into a named tmux buffer, pastes it, and appends a `#__TMUX_MARKER__` comment -- all in a single SSH call to minimize latency
    - **Single-line:** pastes command + marker comment, presses Enter
    - **Multi-line:** wraps in `bash << 'EOF' #__TMUX_MARKER__` heredoc
-4. Streams output by polling `capture-pane` and extracting lines after the marker
-5. Detects completion by counting processes on the pane's TTY (idle = shell only)
-6. Does a final trailing capture to catch any output that flushed after the last poll
+3. Polls `capture-pane` on the remote side, finds the last marker, extracts only the command output (with `skip_top` applied), and returns it along with idle status -- keeping data transfer minimal
+4. Detects completion by checking if the shell (`pane_pid`) has any child processes via `pgrep --parent`. This ignores orphaned processes on reused TTYs.
+5. Does a final trailing capture to catch any output that flushed after the last poll
 
 The marker-based approach survives tmux scrollback eviction (unlike line counting) and always finds the correct command output even with a long scrollback history.
 
