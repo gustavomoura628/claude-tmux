@@ -131,14 +131,14 @@ else
     if [[ "$CMD" == *$'\n'* ]]; then
         # Multi-line: idle check + load buffer + heredoc with marker, one SSH call
         CMD_LINES=$(echo "$CMD" | wc -l)
-        SKIP_TOP=$((CMD_LINES + 1))  # continuation prompts + EOF line
+        SKIP_TOP=$((CMD_LINES + 1))  # continuation prompts + TMUX_EOF line
         printf '%s' "$CMD" | pipe_to "
             PANE_PID=\$(tmux display-message -p -t $SESSION '#{pane_pid}')
             pgrep --parent \$PANE_PID >/dev/null 2>&1 && exit 1
             tmux load-buffer -b $BUFFER_NAME -
-            tmux send-keys -t $SESSION 'bash << '\\''EOF'\\'' #$MARKER' Enter
+            tmux send-keys -t $SESSION 'bash << '\\''TMUX_EOF'\\'' #$MARKER' Enter
             tmux paste-buffer -t $SESSION -b $BUFFER_NAME
-            tmux send-keys -t $SESSION Enter 'EOF' Enter
+            tmux send-keys -t $SESSION Enter 'TMUX_EOF' Enter
         " || { echo "[ERROR] Pane is busy" >&2; exit 1; }
     else
         # Single-line: idle check + load buffer + paste + marker, one SSH call
