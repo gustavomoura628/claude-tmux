@@ -119,10 +119,10 @@ else
         run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
         run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
     else
-        # Single-line: SKIP varies based on timing
-        # During streaming: command line is in TOTAL_NEW (SKIP=1)
-        # After idle: command line scrolls to history, not in TOTAL_NEW (SKIP=0)
-        SKIP_LINES_STREAMING=1
+        # Single-line: command overwrites the prompt line (already in LINES_BEFORE)
+        # so it doesn't add a new line. SKIP=0 during streaming.
+        # After idle: new prompt appears, subtract 1 for it.
+        SKIP_LINES_STREAMING=0
         SKIP_LINES_IDLE=0
         run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
         run "tmux send-keys -t $SESSION Enter"
