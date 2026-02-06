@@ -6,9 +6,9 @@ set -eu
 
 OPT_HOST=""
 OPT_SESSION=""
-OPT_TRUNCATE=""
+OPT_TRUNCATE="2000"
 OPT_CONTINUE=0
-# Handle -t and -c with optional arguments (getopts can't do this natively)
+# Handle -t, -T, and -c with optional arguments (getopts can't do this natively)
 args=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,6 +20,10 @@ while [[ $# -gt 0 ]]; do
                 OPT_TRUNCATE="2000"
                 shift
             fi
+            ;;
+        -T)
+            OPT_TRUNCATE="0"
+            shift
             ;;
         -c)
             OPT_CONTINUE=1
@@ -34,7 +38,7 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-c] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-T] [-c] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
@@ -50,8 +54,8 @@ else
     [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 fi
 
-# Truncation: -t N limits output to N/2 chars at start + N/2 at end
-TRUNCATE_TOTAL="${OPT_TRUNCATE:-0}"
+# Truncation: default 2000 chars (1000 head + 1000 tail). -t N for custom, -T to disable.
+TRUNCATE_TOTAL="${OPT_TRUNCATE}"
 TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
 
 run() {
