@@ -110,10 +110,6 @@ snapshot() {
     "
 }
 
-is_idle() {
-    run "pgrep --parent \$(tmux display-message -p -t $SESSION '#{pane_pid}') >/dev/null 2>&1" && return 1 || return 0
-}
-
 # Extract command output from a snapshot.
 # Finds the marker comment in the command line, takes everything after it,
 # skips heredoc body (skip_top) and prompt line if idle (skip_bottom).
@@ -154,22 +150,28 @@ if [ "$OPT_CONTINUE" -eq 1 ]; then
         CONTINUE_START=0
     fi
 else
-    is_idle || { echo "[ERROR] Pane is busy" >&2; exit 1; }
-
-    printf '%s' "$CMD" | pipe_to "tmux load-buffer -b $BUFFER_NAME -"
-
     if [[ "$CMD" == *$'\n'* ]]; then
-        # Multi-line: wrap in heredoc with marker comment
+        # Multi-line: idle check + load buffer + heredoc with marker, one SSH call
         CMD_LINES=$(echo "$CMD" | wc -l)
         SKIP_TOP=$((CMD_LINES + 1))  # continuation prompts + EOF line
-        run "tmux send-keys -t $SESSION 'bash << '\\''EOF'\\'' #$MARKER' Enter"
-        run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-        run "tmux send-keys -t $SESSION Enter 'EOF' Enter"
+        printf '%s' "$CMD" | pipe_to "
+            PANE_PID=\$(tmux display-message -p -t $SESSION '#{pane_pid}')
+            pgrep --parent \$PANE_PID >/dev/null 2>&1 && exit 1
+            tmux load-buffer -b $BUFFER_NAME -
+            tmux send-keys -t $SESSION 'bash << '\\''EOF'\\'' #$MARKER' Enter
+            tmux paste-buffer -t $SESSION -b $BUFFER_NAME
+            tmux send-keys -t $SESSION Enter 'EOF' Enter
+        " || { echo "[ERROR] Pane is busy" >&2; exit 1; }
     else
-        # Single-line: paste command, append marker comment
+        # Single-line: idle check + load buffer + paste + marker, one SSH call
         SKIP_TOP=0
-        run "tmux paste-buffer -t $SESSION -b $BUFFER_NAME"
-        run "tmux send-keys -t $SESSION ' #$MARKER' Enter"
+        printf '%s' "$CMD" | pipe_to "
+            PANE_PID=\$(tmux display-message -p -t $SESSION '#{pane_pid}')
+            pgrep --parent \$PANE_PID >/dev/null 2>&1 && exit 1
+            tmux load-buffer -b $BUFFER_NAME -
+            tmux paste-buffer -t $SESSION -b $BUFFER_NAME
+            tmux send-keys -t $SESSION ' #$MARKER' Enter
+        " || { echo "[ERROR] Pane is busy" >&2; exit 1; }
     fi
 
     sleep 0.3
