@@ -104,7 +104,7 @@ No markers in scrollback, no escaping issues. Clean output capture via line coun
 
 ## TODO
 
-- **Test edge cases** -- What happens with commands long enough to wrap the tmux terminal? Does line counting break? Also test if a single 10000-char output line is captured correctly with tail.
+- ~~**Test edge cases**~~ -- Wrapped lines were breaking line counting (`history_size` counts logical lines, `cursor_y` counts display rows). Fixed by using `capture-pane -J` to join wrapped lines. Tested with 100x 400-char lines.
 
 - **Peek flag** -- Add a flag like `-p [N]` to just grab the last N characters from the terminal without running a command. Useful for checking what's on screen when something goes wrong.
 
