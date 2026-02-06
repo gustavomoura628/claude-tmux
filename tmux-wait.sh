@@ -80,8 +80,7 @@ pipe_to() {
 
 # Peek mode: grab last N chars from the pane and exit. No command, no marker.
 if [ -n "$OPT_PEEK" ]; then
-    HIST=$(run "tmux display-message -p -t $SESSION '#{history_size}'")
-    CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -$HIST")
+    CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -")
     if [ -z "$CAPTURE" ]; then
         exit 0
     fi
@@ -95,42 +94,22 @@ SNAP_DELIM="__SNAPSHOT_${$}_$$__"
 # output but invisible to execution. Survives tmux scrollback eviction.
 MARKER="__TMUX_MARKER__"
 
-# Atomic snapshot: returns IDLE status and full pane output in one SSH call.
-# Idle = the shell (pane_pid) has no child processes.
+# Atomic snapshot: captures pane, extracts output after marker (skip_top applied),
+# and returns IDLE status. All filtering runs on the remote side to minimize transfer.
+# Returns: IDLE=0/1, then delimiter, then extracted command output.
 snapshot() {
     run "
         PANE_PID=\$(tmux display-message -p -t $SESSION '#{pane_pid}')
         IDLE=0
         pgrep --parent \$PANE_PID >/dev/null 2>&1 || IDLE=1
-        HIST=\$(tmux display-message -p -t $SESSION '#{history_size}')
-        CAPTURE=\$(tmux capture-pane -t $SESSION -p -J -S -\$HIST)
+        CAPTURE=\$(tmux capture-pane -t $SESSION -p -J -S -)
+        MARKER_LINE=\$(echo \"\$CAPTURE\" | grep -n '$MARKER' | tail -1 | cut -d: -f1)
         echo \"IDLE=\$IDLE\"
         echo \"$SNAP_DELIM\"
-        echo \"\$CAPTURE\"
+        if [ -n \"\$MARKER_LINE\" ]; then
+            echo \"\$CAPTURE\" | tail -n +\$((MARKER_LINE + 1 + $SKIP_TOP))
+        fi
     "
-}
-
-# Extract command output from a snapshot.
-# Finds the marker comment in the command line, takes everything after it,
-# skips heredoc body (skip_top) and prompt line if idle (skip_bottom).
-extract_output() {
-    local output="$1" skip_top="$2" skip_bottom="$3"
-    local marker_line after_marker
-    marker_line=$(echo "$output" | grep -n "$MARKER" | tail -1 | cut -d: -f1)
-    if [ -z "$marker_line" ]; then
-        return
-    fi
-    after_marker=$(echo "$output" | tail -n "+$((marker_line + 1))")
-    if [ -z "$after_marker" ]; then
-        return
-    fi
-    local total
-    total=$(echo "$after_marker" | wc -l)
-    local content_lines=$((total - skip_top - skip_bottom))
-    if [ "$content_lines" -le 0 ]; then
-        return
-    fi
-    echo "$after_marker" | tail -n "+$((skip_top + 1))" | head -n "$content_lines"
 }
 
 BUFFER_NAME="claude-${SESSION}"
@@ -141,8 +120,7 @@ if [ "$OPT_CONTINUE" -eq 1 ]; then
     # set PRINTED_LINES to start from 5 lines back for context.
     SKIP_TOP=0
     INIT_SNAP=$(snapshot)
-    INIT_OUTPUT=$(echo "$INIT_SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-    INIT_CMD_OUTPUT=$(extract_output "$INIT_OUTPUT" 0 0)
+    INIT_CMD_OUTPUT=$(echo "$INIT_SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
     if [ -n "$INIT_CMD_OUTPUT" ]; then
         INIT_LINES=$(echo "$INIT_CMD_OUTPUT" | wc -l)
         CONTINUE_START=$((INIT_LINES > 5 ? INIT_LINES - 5 : 0))
@@ -187,10 +165,12 @@ while true; do
     SNAP=$(snapshot)
 
     IDLE=$(echo "$SNAP" | grep -m1 '^IDLE=' | cut -d= -f2)
-    OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-
-    # Extract output after marker (works for both normal and continue modes)
-    CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" "$IDLE")
+    # Output after marker (skip_top already applied on remote side)
+    CMD_OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
+    # Remove prompt line if idle
+    if [ "$IDLE" -eq 1 ] && [ -n "$CMD_OUTPUT" ]; then
+        CMD_OUTPUT=$(echo "$CMD_OUTPUT" | sed '$d')
+    fi
 
     if [ -n "$CMD_OUTPUT" ] && [ "$TRUNCATED" -eq 0 ]; then
         OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
@@ -221,8 +201,11 @@ while true; do
         # Trailing capture: output may still be flushing
         sleep 0.1
         SNAP=$(snapshot)
-        OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-        CMD_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 1)
+        CMD_OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
+        # Remove prompt line (idle)
+        if [ -n "$CMD_OUTPUT" ]; then
+            CMD_OUTPUT=$(echo "$CMD_OUTPUT" | sed '$d')
+        fi
 
         if [ "$TRUNCATE_HALF" -gt 0 ]; then
             if [ -n "$CMD_OUTPUT" ]; then
@@ -255,8 +238,7 @@ while true; do
         # On timeout with truncation, print the tail end of what we have so far
         if [ "$TRUNCATE_HALF" -gt 0 ] && [ "$TRUNCATED" -eq 1 ]; then
             SNAP=$(snapshot)
-            OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
-            FULL_OUTPUT=$(extract_output "$OUTPUT" "$SKIP_TOP" 0)
+            FULL_OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
             if [ -n "$FULL_OUTPUT" ]; then
                 echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
             fi
