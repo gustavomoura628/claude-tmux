@@ -1,6 +1,20 @@
-## Tmux Operation
+---
+name: claude-tmux
+description: Execute commands in persistent tmux sessions, local or remote. Use when running long-running commands, builds, installs, servers, or any task that needs persistent shell state, user visibility, or parallel execution. Prefer this over the built-in Bash tool for anything that isn't a quick one-off.
+allowed-tools: Bash(tmux-exec.sh:*), Bash(./tmux-exec.sh:*), Bash(.claude/skills/claude-tmux/tmux-exec.sh:*)
+---
 
-You have access to tmux sessions for persistent command execution -- local or remote. Prefer tmux over the built-in Bash tool when you need:
+# Tmux Operation
+
+### First-time setup
+
+On first use, ask the user which host(s) to target (e.g. `user@host`) or whether sessions are local. Save this to your memory so future sessions have it.
+
+Use auto-generated session names: `claude-session-0`, `claude-session-1`, etc. Check `tmux list-sessions` before creating new ones -- reuse existing sessions when possible.
+
+---
+
+You have access to tmux sessions for persistent command execution -- local or remote. Prefer this over the built-in Bash tool when you need:
 
 - **Persistent state** -- working directory, env vars, and processes carry over between commands
 - **Long-running commands** -- builds, installs, servers. Use `-c` to check back on timeouts

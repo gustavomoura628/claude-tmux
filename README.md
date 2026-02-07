@@ -13,9 +13,19 @@ Claude Code's Bash tool runs each command in an isolated shell. That's fine for 
 - **Surviving disconnects** -- commands keep running if the Claude session ends
 - **Remote execution** -- same interface whether local or over SSH
 
-## Setup
+## Install
 
-### 1. Create a tmux session
+```bash
+# From your project root:
+mkdir -p .claude/skills
+ln -s /absolute/path/to/claude-tmux .claude/skills/claude-tmux
+```
+
+Claude Code auto-discovers skills by scanning `.claude/skills/*/SKILL.md` on startup. The skill will appear in the available skills list and activate automatically when the task matches, or manually via `/claude-tmux`.
+
+On first use, Claude will ask which host(s) to target and save them to memory. No manual CLAUDE.md configuration needed.
+
+### Create a tmux session
 
 ```bash
 # Local
@@ -24,10 +34,6 @@ tmux new -s my-session
 # Remote (SSH key auth required)
 ssh user@host "tmux new -d -s my-session"
 ```
-
-### 2. Add to your project
-
-Copy or symlink `tmux-exec.sh` into your project, then paste `CLAUDE_TEMPLATE.md` into your project's `.claude/CLAUDE.md`. Replace the placeholder values (`SESSION`, `USER@HOST`) with your actual settings.
 
 ## Usage
 
@@ -112,7 +118,16 @@ The marker-based approach survives tmux scrollback eviction and always finds the
 ## TODO
 
 - **Send keys mode** -- wrap `tmux send-keys` for raw keystrokes (Ctrl-C, arrow keys, etc.) without running a command
-- **Stress test same-session parallelism** -- Claude's Bash tool is serial in practice, but Claude may still try to launch multiple background commands targeting the same session. The idle check + dispatch sequence isn't atomic, so two near-simultaneous calls could both pass the "is busy" check and clobber each other. Need to test this and decide whether to add locking or just document it as a footgun
+- **Same-session locking** -- parallelism is broken (tested, confirmed). The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
+
+### Ideas
+
+- **Single-SSH rewrite** -- move the entire poll loop to the remote side so it runs as one SSH call. Flock wraps the whole thing. Also eliminates per-poll SSH latency (~1-2s per round-trip). Downside: ~100 lines of bash shipped over SSH every invocation, escaping complexity, harder to debug.
+- **Remote helper script** -- on first use, scp a helper script to the remote machine (e.g. `/tmp/tmux-exec-remote.sh`). Local side just calls `ssh host /tmp/tmux-exec-remote.sh <args>`. The remote script does flock + dispatch + poll + streaming. Avoids shipping code every call, easier to debug (it's a real file on the remote), and the remote script can be version-checked and re-deployed if stale. Downside: adds a deploy/sync step.
+- **Auto-deploy tmux** -- if the remote doesn't have tmux, scp a statically compiled binary (e.g. from `tmux-static` on GitHub) and use that. Same deploy pattern as the remote helper script. Binary must match the remote's architecture. Preferred install locations in order: `$XDG_RUNTIME_DIR` (per-user tmpfs, avoids noexec issues), `/tmp` (may be noexec on hardened systems), `~/bin` as a last resort (schedule deletion via `at` or a background `sleep N && rm` to avoid leaving permanent files on someone else's machine).
+- **No-tmux fallback** -- if the remote has no tmux and we can't deploy it, fall back to plain SSH with a background process + output file: `nohup cmd > /tmp/tmux-exec-output-$ID 2>&1 & echo $!`, then poll the file. Loses the user-visible pane but keeps persistent execution and output capture. Degraded mode beats no mode.
+- **Screen as a fallback** -- GNU screen ships on more systems than tmux, especially older/minimal servers. The core mechanics (send command, capture output, check idle) all have screen equivalents. Could adapt automatically.
+- **Multiplexer auto-detection** -- on first connect, probe the remote: `which tmux || which screen || echo NONE`. Cache the result. Pick the best available backend automatically rather than failing.
 
 ## Requirements
 
