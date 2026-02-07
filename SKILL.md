@@ -38,7 +38,7 @@ command here
 EOF
 ```
 
-Always pass commands via heredoc (avoids escaping issues with `!`, `"`, `$`, etc.). The last positional argument is the timeout in seconds.
+Always pass commands via heredoc (avoids escaping issues with special characters like !, ", $, etc.). The last positional argument is the timeout in seconds.
 
 ### Flags
 
