@@ -65,7 +65,7 @@ EOF
 | `-s NAME` | Tmux session name (or set `TMUX_REMOTE_SESSION`) |
 | `-h USER@HOST` | SSH target for remote sessions (or set `TMUX_REMOTE_HOST`, omit for local) |
 | `-t N` | Truncate output to N chars (default: 2000). Shows head + `[...truncated...]` + tail |
-| `-T` | Disable truncation entirely |
+| `--dangerously-skip-truncation` | Disable truncation entirely |
 | `-c` | Continue mode -- resume watching a command that timed out |
 | `-p [N]` | Peek mode -- show last N chars on screen (default: 2000), no command needed |
 

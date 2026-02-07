@@ -47,7 +47,7 @@ Always pass commands via heredoc (avoids escaping issues with special characters
 | `-s NAME` | Session name (or set `TMUX_REMOTE_SESSION`) |
 | `-h USER@HOST` | SSH target (or set `TMUX_REMOTE_HOST`, omit for local) |
 | `-t N` | Truncate output to N chars (default: 2000) |
-| `-T` | Disable truncation |
+| `--dangerously-skip-truncation` | Disable truncation entirely |
 | `-c` | Continue watching a timed-out command |
 | `-p [N]` | Peek at last N chars on screen (no command needed) |
 

@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
-        -T)
+        --dangerously-skip-truncation)
             OPT_TRUNCATE="0"
             shift
             ;;
@@ -48,7 +48,7 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [-T] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [--dangerously-skip-truncation] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
@@ -66,7 +66,7 @@ else
     [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 fi
 
-# Truncation: default 2000 chars (1000 head + 1000 tail). -t N for custom, -T to disable.
+# Truncation: default 2000 chars (1000 head + 1000 tail). -t N for custom, --dangerously-skip-truncation to disable.
 TRUNCATE_TOTAL="${OPT_TRUNCATE}"
 TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
 
