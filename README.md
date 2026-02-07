@@ -113,12 +113,16 @@ EOF
 4. Detects completion via `pgrep --parent $PANE_PID` (ignores orphaned processes on reused TTYs)
 5. Final trailing capture to catch output that flushed after the last poll
 
-The marker-based approach survives tmux scrollback eviction and always finds the correct output even with long history.
+The marker-based approach survives normal tmux scrollback eviction and always finds the correct output even with long history — with one exception (see bugs).
+
+## Known Bugs
+
+- **Marker eviction on huge output** -- if a command produces enough output to exceed tmux's `history-limit` (default 2000 lines), the marker gets pushed out of scrollback. When this happens, the script prints `[OUTPUT EXCEEDED TMUX SCROLLBACK]` and falls back to showing the tail of the pane (respects `-t`, defaults to 2000 chars). Not as clean as marker-based extraction, but better than silent empty. Bumping `history-limit` on session creation avoids the issue entirely.
+- **Same-session parallelism** -- tested and confirmed broken. The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
 
 ## TODO
 
 - **Send keys mode** -- wrap `tmux send-keys` for raw keystrokes (Ctrl-C, arrow keys, etc.) without running a command
-- **Same-session locking** -- parallelism is broken (tested, confirmed). The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
 
 ### Ideas
 

@@ -91,7 +91,9 @@ fi
 SNAP_DELIM="__SNAPSHOT_${$}_$$__"
 
 # Marker appended as a comment to the command line. Greppable in capture-pane
-# output but invisible to execution. Survives tmux scrollback eviction.
+# output but invisible to execution. Survives normal tmux scrollback eviction.
+# If output is so large the marker gets evicted, we detect it and fall back
+# to dumping the tail of the pane.
 MARKER="__TMUX_MARKER__"
 
 # Atomic snapshot: captures pane, extracts output after marker (skip_top applied),
@@ -105,9 +107,14 @@ snapshot() {
         CAPTURE=\$(tmux capture-pane -t $SESSION -p -J -S -)
         MARKER_LINE=\$(echo \"\$CAPTURE\" | grep -n '$MARKER' | tail -1 | cut -d: -f1)
         echo \"IDLE=\$IDLE\"
-        echo \"$SNAP_DELIM\"
         if [ -n \"\$MARKER_LINE\" ]; then
+            echo \"MARKER_FOUND=1\"
+            echo \"$SNAP_DELIM\"
             echo \"\$CAPTURE\" | tail -n +\$((MARKER_LINE + 1 + $SKIP_TOP))
+        else
+            echo \"MARKER_FOUND=0\"
+            echo \"$SNAP_DELIM\"
+            echo \"\$CAPTURE\"
         fi
     "
 }
@@ -160,13 +167,46 @@ ELAPSED=0
 PRINTED_LINES=${CONTINUE_START:-0}
 PRINTED_CHARS=0
 TRUNCATED=0
+MARKER_LOST=0
 
 while true; do
     SNAP=$(snapshot)
 
     IDLE=$(echo "$SNAP" | grep -m1 '^IDLE=' | cut -d= -f2)
+    MARKER_FOUND=$(echo "$SNAP" | grep -m1 '^MARKER_FOUND=' | cut -d= -f2)
     # Output after marker (skip_top already applied on remote side)
     CMD_OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
+
+    # Marker evicted from scrollback -- output too large for tmux history
+    if [ "$MARKER_FOUND" -eq 0 ] && [ "$MARKER_LOST" -eq 0 ]; then
+        MARKER_LOST=1
+        echo "[OUTPUT EXCEEDED TMUX SCROLLBACK -- marker lost, showing tail of pane]"
+    fi
+
+    if [ "$MARKER_LOST" -eq 1 ]; then
+        # Can't extract cleanly -- just wait for idle then dump the tail
+        if [ "$IDLE" -eq 1 ]; then
+            if [ -n "$CMD_OUTPUT" ]; then
+                TAIL_SIZE=${TRUNCATE_TOTAL:-2000}
+                [ "$TAIL_SIZE" -eq 0 ] && TAIL_SIZE=2000
+                echo "${CMD_OUTPUT: -$TAIL_SIZE}"
+            fi
+            break
+        fi
+        sleep 0.5
+        ELAPSED=$((ELAPSED + 1))
+        if [ "$ELAPSED" -gt "$((TIMEOUT * 2))" ]; then
+            if [ -n "$CMD_OUTPUT" ]; then
+                TAIL_SIZE=${TRUNCATE_TOTAL:-2000}
+                [ "$TAIL_SIZE" -eq 0 ] && TAIL_SIZE=2000
+                echo "${CMD_OUTPUT: -$TAIL_SIZE}"
+            fi
+            echo "[TIMEOUT after ${TIMEOUT}s]"
+            exit 0
+        fi
+        continue
+    fi
+
     # Remove prompt line if idle
     if [ "$IDLE" -eq 1 ] && [ -n "$CMD_OUTPUT" ]; then
         CMD_OUTPUT=$(echo "$CMD_OUTPUT" | sed '$d')
