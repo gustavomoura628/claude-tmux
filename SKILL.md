@@ -48,8 +48,30 @@ Always pass commands via heredoc (avoids escaping issues with special characters
 | `-h USER@HOST` | SSH target (or set `TMUX_REMOTE_HOST`, omit for local) |
 | `-t N` | Truncate output to N chars (default: 2000) |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
+| `--raw` | Paste stdin into pane via buffer (for TUIs). Fire-and-forget |
+| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.). Fire-and-forget |
 | `-c` | Continue watching a timed-out command |
 | `-p [N]` | Peek at last N chars on screen (no command needed) |
+
+### Raw and key modes (for TUI targets)
+
+Use `--raw` to paste text and `--keys` to send keystrokes. These are separate mechanisms -- text goes via tmux buffer (literal, no escaping), keys go via send-keys (interpreted as key names).
+
+```bash
+# Paste text into a TUI pane:
+./tmux-exec.sh -s SESSION --raw << 'EOF'
+hello world
+EOF
+
+# Then submit with Enter:
+./tmux-exec.sh -s SESSION --keys Enter
+
+# Send Ctrl-C:
+./tmux-exec.sh -s SESSION --keys C-c
+
+# Multiple keys:
+./tmux-exec.sh -s SESSION --keys Up Up Enter
+```
 
 ### Timeout and continue
 

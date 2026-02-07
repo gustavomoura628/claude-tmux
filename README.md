@@ -66,6 +66,8 @@ EOF
 | `-h USER@HOST` | SSH target for remote sessions (or set `TMUX_REMOTE_HOST`, omit for local) |
 | `-t N` | Truncate output to N chars (default: 2000). Shows head + `[...truncated...]` + tail |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
+| `--raw` | Raw paste mode -- stdin goes directly into the pane via tmux buffer. No marker, no polling. For TUI targets |
+| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.) via send-keys. Fire-and-forget |
 | `-c` | Continue mode -- resume watching a command that timed out |
 | `-p [N]` | Peek mode -- show last N chars on screen (default: 2000), no command needed |
 
@@ -81,6 +83,29 @@ EOF
 
 # Resume watching (another 120s)
 ./tmux-exec.sh -s my-session -c 120
+```
+
+### Raw and key modes
+
+For TUI targets (e.g. another Claude Code instance), text and keystrokes are separate operations:
+
+- `--raw` pastes text via tmux buffer (literal, no escaping issues)
+- `--keys` sends tmux key names via send-keys (Enter, C-c, Up, etc.)
+
+```bash
+# Paste text into a TUI pane:
+./tmux-exec.sh -s my-session --raw << 'EOF'
+hello world
+EOF
+
+# Submit with Enter:
+./tmux-exec.sh -s my-session --keys Enter
+
+# Send Ctrl-C:
+./tmux-exec.sh -s my-session --keys C-c
+
+# Multiple keys in one call:
+./tmux-exec.sh -s my-session --keys Up Up Enter
 ```
 
 ### Peek mode
@@ -121,8 +146,6 @@ The marker-based approach survives normal tmux scrollback eviction and always fi
 - **Same-session parallelism** -- tested and confirmed broken. The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
 
 ## TODO
-
-- **Send keys mode** -- wrap `tmux send-keys` for raw keystrokes (Ctrl-C, arrow keys, etc.) without running a command
 
 ### Ideas
 

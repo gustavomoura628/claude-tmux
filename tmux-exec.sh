@@ -8,6 +8,8 @@ OPT_HOST=""
 OPT_SESSION=""
 OPT_TRUNCATE="2000"
 OPT_CONTINUE=0
+OPT_RAW=0
+OPT_KEYS=0
 OPT_PEEK=""
 # Handle -t, -T, -c, -p with optional arguments (getopts can't do this natively)
 args=()
@@ -24,6 +26,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dangerously-skip-truncation)
             OPT_TRUNCATE="0"
+            shift
+            ;;
+        --raw)
+            OPT_RAW=1
+            shift
+            ;;
+        --keys)
+            OPT_KEYS=1
             shift
             ;;
         -c)
@@ -48,19 +58,30 @@ while getopts "h:s:" opt; do
     case $opt in
         h) OPT_HOST="$OPTARG" ;;
         s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [--dangerously-skip-truncation] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [--dangerously-skip-truncation] [--raw] [--keys KEY...] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
 
 HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
 SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
-TIMEOUT="${1:-30}"
+BUFFER_NAME="claude-${SESSION}"
+
+if [ "$OPT_KEYS" -eq 1 ]; then
+    KEY_ARGS=("$@")
+    [ ${#KEY_ARGS[@]} -eq 0 ] && { echo "Error: --keys requires at least one key name" >&2; exit 1; }
+else
+    TIMEOUT="${1:-30}"
+fi
 
 if [ -n "$OPT_PEEK" ]; then
     CMD=""
 elif [ "$OPT_CONTINUE" -eq 1 ]; then
     CMD=""
+elif [ "$OPT_RAW" -eq 1 ]; then
+    CMD=""  # raw mode reads stdin directly in pipe_to
+elif [ "$OPT_KEYS" -eq 1 ]; then
+    CMD=""  # key mode uses positional args, not stdin
 else
     CMD=$(cat)
     [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
@@ -85,6 +106,23 @@ if [ -n "$OPT_PEEK" ]; then
         exit 0
     fi
     echo "${CAPTURE: -$OPT_PEEK}"
+    exit 0
+fi
+
+# Key mode: send tmux key names directly. No text, no marker, no polling.
+if [ "$OPT_KEYS" -eq 1 ]; then
+    run "tmux send-keys -t $SESSION ${KEY_ARGS[*]}"
+    exit 0
+fi
+
+# Raw mode: paste stdin directly into the pane via buffer. No marker, no
+# polling, no send-keys. Control chars (\x03=Ctrl-C, etc.) and newlines
+# are delivered as-is through the PTY.
+if [ "$OPT_RAW" -eq 1 ]; then
+    pipe_to "
+        tmux load-buffer -b $BUFFER_NAME -
+        tmux paste-buffer -t $SESSION -b $BUFFER_NAME
+    "
     exit 0
 fi
 
@@ -118,8 +156,6 @@ snapshot() {
         fi
     "
 }
-
-BUFFER_NAME="claude-${SESSION}"
 
 if [ "$OPT_CONTINUE" -eq 1 ]; then
     # Continue mode: reuse the marker from the original command.
