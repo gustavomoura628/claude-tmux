@@ -1,7 +1,7 @@
 ---
 name: claude-tmux
 description: Execute commands in persistent tmux sessions, local or remote. Use when running long-running commands, builds, installs, servers, or any task that needs persistent shell state, user visibility, or parallel execution. Prefer this over the built-in Bash tool for anything that isn't a quick one-off.
-allowed-tools: Bash(tmux-exec.sh:*), Bash(./tmux-exec.sh:*), Bash(.claude/skills/claude-tmux/tmux-exec.sh:*)
+allowed-tools: Bash(.claude/skills/claude-tmux/tmux-exec.sh:*)
 ---
 
 # Tmux Operation
@@ -28,12 +28,12 @@ Use the built-in Bash tool for quick, stateless one-off commands.
 
 ```bash
 # Basic (30s default timeout):
-./tmux-exec.sh -s SESSION << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION << 'EOF'
 command here
 EOF
 
 # Remote with explicit timeout:
-./tmux-exec.sh -h USER@HOST -s SESSION 60 << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh -h USER@HOST -s SESSION 60 << 'EOF'
 command here
 EOF
 ```
@@ -59,18 +59,18 @@ Use `--raw` to paste text and `--keys` to send keystrokes. These are separate me
 
 ```bash
 # Paste text into a TUI pane:
-./tmux-exec.sh -s SESSION --raw << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --raw << 'EOF'
 hello world
 EOF
 
 # Then submit with Enter:
-./tmux-exec.sh -s SESSION --keys Enter
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys Enter
 
 # Send Ctrl-C:
-./tmux-exec.sh -s SESSION --keys C-c
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys C-c
 
 # Multiple keys:
-./tmux-exec.sh -s SESSION --keys Up Up Enter
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys Up Up Enter
 ```
 
 ### Timeout and continue
@@ -78,7 +78,7 @@ EOF
 Always specify a timeout. Default is 30s -- intentionally short. If a command times out, resume with:
 
 ```bash
-./tmux-exec.sh -s SESSION -c 120
+.claude/skills/claude-tmux/tmux-exec.sh -s SESSION -c 120
 ```
 
 ### Session management
