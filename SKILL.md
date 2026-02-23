@@ -12,6 +12,10 @@ On first use, ask the user which host(s) to target (e.g. `user@host`) or whether
 
 Use auto-generated session names: `claude-session-0`, `claude-session-1`, etc. Check `tmux list-sessions` before creating new ones -- reuse existing sessions when possible.
 
+### CRITICAL: Never kill or interrupt busy panes
+
+**NEVER send C-c, C-d, kill-session, or any destructive keys to a pane that is busy with another process.** If a pane reports "busy", **peek first** (`-p`) to see what's running. If it's someone else's process (a build, sync, download, server, etc.), **leave it alone and use a different session.** You could destroy hours of work by blindly canceling a running process.
+
 ---
 
 You have access to tmux sessions for persistent command execution -- local or remote. Prefer this over the built-in Bash tool when you need:

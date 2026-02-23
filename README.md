@@ -21,7 +21,7 @@ mkdir -p .claude/skills
 ln -s /absolute/path/to/claude-tmux .claude/skills/claude-tmux
 ```
 
-Claude Code auto-discovers skills by scanning `.claude/skills/*/SKILL.md` on startup. The skill will appear in the available skills list and activate automatically when the task matches, or manually via `/claude-tmux`.
+Claude Code auto-discovers skills by scanning `.claude/skills/*/SKILL.md` on startup. **Restart Claude Code after installing** for the skill to take effect. The skill will appear in the available skills list and activate automatically when the task matches, or manually via `/claude-tmux`.
 
 On first use, Claude will ask which host(s) to target and save them to memory. No manual CLAUDE.md configuration needed.
 
