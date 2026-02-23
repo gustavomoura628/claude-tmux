@@ -182,7 +182,12 @@ else
             tmux send-keys -t $SESSION 'bash << '\\''TMUX_EOF'\\'' #$MARKER' Enter
             tmux paste-buffer -t $SESSION -b $BUFFER_NAME
             tmux send-keys -t $SESSION Enter 'TMUX_EOF' Enter
-        " || { echo "[ERROR] Pane is busy" >&2; exit 1; }
+        " || {
+            PEEK=$(run "tmux capture-pane -t $SESSION -p -J -S -")
+            echo "[ERROR] Pane is busy. Current pane contents:" >&2
+            echo "${PEEK: -2000}" >&2
+            exit 1
+        }
     else
         # Single-line: idle check + load buffer + paste + marker, one SSH call
         SKIP_TOP=0
@@ -192,7 +197,12 @@ else
             tmux load-buffer -b $BUFFER_NAME -
             tmux paste-buffer -t $SESSION -b $BUFFER_NAME
             tmux send-keys -t $SESSION ' #$MARKER' Enter
-        " || { echo "[ERROR] Pane is busy" >&2; exit 1; }
+        " || {
+            PEEK=$(run "tmux capture-pane -t $SESSION -p -J -S -")
+            echo "[ERROR] Pane is busy. Current pane contents:" >&2
+            echo "${PEEK: -2000}" >&2
+            exit 1
+        }
     fi
 
     sleep 0.3
