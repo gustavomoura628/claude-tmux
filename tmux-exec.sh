@@ -7,40 +7,40 @@ set -eu
 OPT_HOST=""
 OPT_SESSION=""
 OPT_TRUNCATE="2000"
+OPT_TIMEOUT="30"
 OPT_CONTINUE=0
 OPT_RAW=0
 OPT_KEYS=0
 OPT_PEEK=""
-# Handle -t, -T, -c, -p with optional arguments (getopts can't do this natively)
-args=()
+KEY_ARGS=()
+
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -t)
-            if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
-                OPT_TRUNCATE="$2"
-                shift 2
-            else
-                OPT_TRUNCATE="2000"
-                shift
-            fi
+        --session)
+            OPT_SESSION="${2:?'--session requires a name'}"
+            shift 2
+            ;;
+        --host)
+            OPT_HOST="${2:?'--host requires USER@HOST'}"
+            shift 2
+            ;;
+        --truncate-chars)
+            OPT_TRUNCATE="${2:?'--truncate-chars requires a number'}"
+            shift 2
             ;;
         --dangerously-skip-truncation)
             OPT_TRUNCATE="0"
             shift
             ;;
-        --raw)
-            OPT_RAW=1
-            shift
+        --timeout)
+            OPT_TIMEOUT="${2:?'--timeout requires seconds'}"
+            shift 2
             ;;
-        --keys)
-            OPT_KEYS=1
-            shift
-            ;;
-        -c)
+        --continue)
             OPT_CONTINUE=1
             shift
             ;;
-        -p)
+        --peek-chars)
             if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
                 OPT_PEEK="$2"
                 shift 2
@@ -49,29 +49,32 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
-        *) args+=("$1"); shift ;;
+        --raw)
+            OPT_RAW=1
+            shift
+            ;;
+        --keys)
+            OPT_KEYS=1
+            shift
+            # Consume remaining args as key names
+            KEY_ARGS=("$@")
+            shift $#
+            ;;
+        *)
+            echo "Unknown flag: $1" >&2
+            echo "Usage: $0 --session NAME [--host USER@HOST] [--timeout SECS] [--truncate-chars N] [--dangerously-skip-truncation] [--raw] [--keys KEY...] [--continue] [--peek-chars [N]]" >&2
+            exit 1
+            ;;
     esac
 done
-set -- "${args[@]}"
-
-while getopts "h:s:" opt; do
-    case $opt in
-        h) OPT_HOST="$OPTARG" ;;
-        s) OPT_SESSION="$OPTARG" ;;
-        *) echo "Usage: $0 [-h host] [-s session] [-t [chars]] [--dangerously-skip-truncation] [--raw] [--keys KEY...] [-c] [-p [chars]] [timeout]" >&2; exit 1 ;;
-    esac
-done
-shift $((OPTIND - 1))
 
 HOST="${OPT_HOST:-${TMUX_REMOTE_HOST:-}}"
-SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set -s SESSION or TMUX_REMOTE_SESSION'}}"
+SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set --session NAME or TMUX_REMOTE_SESSION'}}"
 BUFFER_NAME="claude-${SESSION}"
+TIMEOUT="$OPT_TIMEOUT"
 
 if [ "$OPT_KEYS" -eq 1 ]; then
-    KEY_ARGS=("$@")
     [ ${#KEY_ARGS[@]} -eq 0 ] && { echo "Error: --keys requires at least one key name" >&2; exit 1; }
-else
-    TIMEOUT="${1:-30}"
 fi
 
 if [ -n "$OPT_PEEK" ]; then
@@ -87,7 +90,7 @@ else
     [ -z "$CMD" ] && { echo "Error: no command provided via stdin" >&2; exit 1; }
 fi
 
-# Truncation: default 2000 chars (1000 head + 1000 tail). -t N for custom, --dangerously-skip-truncation to disable.
+# Truncation: default 2000 chars (1000 head + 1000 tail). --truncate-chars N for custom, --dangerously-skip-truncation to disable.
 TRUNCATE_TOTAL="${OPT_TRUNCATE}"
 TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
 

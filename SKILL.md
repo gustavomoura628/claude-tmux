@@ -14,14 +14,14 @@ Use auto-generated session names: `claude-session-0`, `claude-session-1`, etc. C
 
 ### CRITICAL: Never kill or interrupt busy panes
 
-**NEVER send C-c, C-d, kill-session, or any destructive keys to a pane that is busy with another process.** If a pane reports "busy", **peek first** (`-p`) to see what's running. If it's someone else's process (a build, sync, download, server, etc.), **leave it alone and use a different session.** You could destroy hours of work by blindly canceling a running process.
+**NEVER send C-c, C-d, kill-session, or any destructive keys to a pane that is busy with another process.** If a pane reports "busy", **peek first** (`--peek-chars`) to see what's running. If it's someone else's process (a build, sync, download, server, etc.), **leave it alone and use a different session.** You could destroy hours of work by blindly canceling a running process.
 
 ---
 
 You have access to tmux sessions for persistent command execution -- local or remote. Prefer this over the built-in Bash tool when you need:
 
 - **Persistent state** -- working directory, env vars, and processes carry over between commands
-- **Long-running commands** -- builds, installs, servers. Use `-c` to check back on timeouts
+- **Long-running commands** -- builds, installs, servers. Use `--continue` to check back on timeouts
 - **User visibility** -- the user can watch the tmux pane in real time
 - **Parallel sessions** -- separate sessions for concurrent tasks
 - **Remote execution** -- same interface over SSH
@@ -32,30 +32,31 @@ Use the built-in Bash tool for quick, stateless one-off commands.
 
 ```bash
 # Basic (30s default timeout):
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION << 'EOF'
 command here
 EOF
 
 # Remote with explicit timeout:
-.claude/skills/claude-tmux/tmux-exec.sh -h USER@HOST -s SESSION 60 << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh --host USER@HOST --session SESSION --timeout 60 << 'EOF'
 command here
 EOF
 ```
 
-Always pass commands via heredoc (avoids escaping issues with special characters like !, ", $, etc.). The last positional argument is the timeout in seconds.
+Always pass commands via heredoc (avoids escaping issues with special characters like !, ", $, etc.).
 
 ### Flags
 
 | Flag | Description |
 |------|-------------|
-| `-s NAME` | Session name (or set `TMUX_REMOTE_SESSION`) |
-| `-h USER@HOST` | SSH target (or set `TMUX_REMOTE_HOST`, omit for local) |
-| `-t N` | Truncate output to N chars (default: 2000) |
+| `--session NAME` | Session name (or set `TMUX_REMOTE_SESSION`) |
+| `--host USER@HOST` | SSH target (or set `TMUX_REMOTE_HOST`, omit for local) |
+| `--timeout SECS` | Timeout in seconds (default: 30) |
+| `--truncate-chars N` | Truncate output to N chars (default: 2000) |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
 | `--raw` | Paste stdin into pane via buffer (for TUIs). Fire-and-forget |
 | `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.). Fire-and-forget |
-| `-c` | Continue watching a timed-out command |
-| `-p [N]` | Peek at last N chars on screen (no command needed) |
+| `--continue` | Continue watching a timed-out command |
+| `--peek-chars [N]` | Peek at last N chars on screen (default: 2000, no command needed) |
 
 ### Raw and key modes (for TUI targets)
 
@@ -63,18 +64,18 @@ Use `--raw` to paste text and `--keys` to send keystrokes. These are separate me
 
 ```bash
 # Paste text into a TUI pane:
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --raw << 'EOF'
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --raw << 'EOF'
 hello world
 EOF
 
 # Then submit with Enter:
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys Enter
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys Enter
 
 # Send Ctrl-C:
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys C-c
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys C-c
 
 # Multiple keys:
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION --keys Up Up Enter
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys Up Up Enter
 ```
 
 ### Timeout and continue
@@ -82,7 +83,7 @@ EOF
 Always specify a timeout. Default is 30s -- intentionally short. If a command times out, resume with:
 
 ```bash
-.claude/skills/claude-tmux/tmux-exec.sh -s SESSION -c 120
+.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --continue --timeout 120
 ```
 
 ### Session management
