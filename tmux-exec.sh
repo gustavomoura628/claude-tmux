@@ -217,6 +217,7 @@ PRINTED_LINES=${CONTINUE_START:-0}
 PRINTED_CHARS=0
 TRUNCATED=0
 MARKER_LOST=0
+LAST_LINE=""
 
 while true; do
     SNAP=$(snapshot)
@@ -263,6 +264,7 @@ while true; do
 
     if [ -n "$CMD_OUTPUT" ] && [ "$TRUNCATED" -eq 0 ]; then
         OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
+        CURRENT_LAST_LINE=$(echo "$CMD_OUTPUT" | tail -1)
 
         if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
             NEW_OUTPUT=$(echo "$CMD_OUTPUT" | tail -n "+$((PRINTED_LINES + 1))")
@@ -283,6 +285,19 @@ while true; do
                 printf '%s\n' "$NEW_OUTPUT"
             fi
             PRINTED_LINES=$OUTPUT_LINES
+            LAST_LINE="$CURRENT_LAST_LINE"
+        elif [ "$CURRENT_LAST_LINE" != "$LAST_LINE" ]; then
+            # Same line count but last line changed (e.g. \r progress bar)
+            if [ "$TRUNCATE_HALF" -gt 0 ]; then
+                REMAINING=$((TRUNCATE_HALF - PRINTED_CHARS))
+                if [ "$REMAINING" -gt 0 ] && [ "${#CURRENT_LAST_LINE}" -le "$REMAINING" ]; then
+                    printf '%s\n' "$CURRENT_LAST_LINE"
+                    PRINTED_CHARS=$((PRINTED_CHARS + ${#CURRENT_LAST_LINE} + 1))
+                fi
+            else
+                printf '%s\n' "$CURRENT_LAST_LINE"
+            fi
+            LAST_LINE="$CURRENT_LAST_LINE"
         fi
     fi
 
