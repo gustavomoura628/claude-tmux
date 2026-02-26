@@ -162,3 +162,19 @@ The marker-based approach survives normal tmux scrollback eviction and always fi
 - tmux on the target machine
 - bash on both machines
 - SSH key auth (for remote sessions)
+
+## Termux (Android)
+
+Termux doesn't have a Shift key by default, which means you can't use Shift+Tab to cycle through Claude Code's permission prompts. To fix this, add SHIFT to the extra keys bar:
+
+```bash
+# Edit (or create) the config file:
+nano ~/.termux/termux.properties
+
+# Add a 2-row extra keys layout with SHIFT:
+extra-keys = [['ESC','/','SHIFT','HOME','UP','END','PGUP'], \
+              ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN']]
+
+# Reload for changes to take effect:
+termux-reload-settings
+```
