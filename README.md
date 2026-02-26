@@ -7,7 +7,7 @@ A reusable skill that lets Claude Code execute commands in persistent tmux sessi
 Claude Code's Bash tool runs each command in an isolated shell. That's fine for quick things, but falls short when you need:
 
 - **Persistent sessions** -- environment, working directory, and processes carry over between commands
-- **Long-running commands** -- fire off a build or install, check on it later with `-c`
+- **Long-running commands** -- fire off a build or install, check on it later with `--continue`
 - **User visibility** -- the user can watch the tmux pane in real time
 - **Parallel sessions** -- build in one, test in another, server in a third
 - **Surviving disconnects** -- commands keep running if the Claude session ends
@@ -37,21 +37,21 @@ ssh user@host "tmux new -d -s my-session"
 
 ## Usage
 
-Commands are passed via stdin (heredoc) to avoid shell escaping issues. The last positional argument is the timeout in seconds.
+Commands are passed via stdin (heredoc) to avoid shell escaping issues.
 
 ```bash
 # Basic: run a command, wait up to 60s
-./tmux-exec.sh -s my-session 60 << 'EOF'
+./tmux-exec.sh --session my-session --timeout 60 << 'EOF'
 make build
 EOF
 
 # Remote session
-./tmux-exec.sh -h user@host -s my-session 60 << 'EOF'
+./tmux-exec.sh --host user@host --session my-session --timeout 60 << 'EOF'
 docker compose up -d
 EOF
 
 # Multi-line commands work naturally
-./tmux-exec.sh -s my-session 60 << 'EOF'
+./tmux-exec.sh --session my-session --timeout 60 << 'EOF'
 for i in 1 2 3; do
   echo "iteration $i"
 done
@@ -62,27 +62,28 @@ EOF
 
 | Flag | Description |
 |------|-------------|
-| `-s NAME` | Tmux session name (or set `TMUX_REMOTE_SESSION`) |
-| `-h USER@HOST` | SSH target for remote sessions (or set `TMUX_REMOTE_HOST`, omit for local) |
-| `-t N` | Truncate output to N chars (default: 2000). Shows head + `[...truncated...]` + tail |
+| `--session NAME` | Tmux session name (or set `TMUX_REMOTE_SESSION`) |
+| `--host USER@HOST` | SSH target for remote sessions (or set `TMUX_REMOTE_HOST`, omit for local) |
+| `--timeout SECS` | Timeout in seconds (default: 30) |
+| `--truncate-chars N` | Truncate output to N chars (default: 2000). Shows head + `[...truncated...]` + tail |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
 | `--raw` | Raw paste mode -- stdin goes directly into the pane via tmux buffer. No marker, no polling. For TUI targets |
 | `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.) via send-keys. Fire-and-forget |
-| `-c` | Continue mode -- resume watching a command that timed out |
-| `-p [N]` | Peek mode -- show last N chars on screen (default: 2000), no command needed |
+| `--continue` | Continue mode -- resume watching a command that timed out |
+| `--peek-chars [N]` | Peek mode -- show last N chars on screen (default: 2000), no command needed |
 
 ### Continue mode
 
-If a command times out, use `-c` to pick up where you left off:
+If a command times out, use `--continue` to pick up where you left off:
 
 ```bash
 # Command times out after 30s
-./tmux-exec.sh -s my-session 30 << 'EOF'
+./tmux-exec.sh --session my-session --timeout 30 << 'EOF'
 make -j8
 EOF
 
 # Resume watching (another 120s)
-./tmux-exec.sh -s my-session -c 120
+./tmux-exec.sh --session my-session --continue --timeout 120
 ```
 
 ### Raw and key modes
@@ -94,18 +95,18 @@ For TUI targets (e.g. another Claude Code instance), text and keystrokes are sep
 
 ```bash
 # Paste text into a TUI pane:
-./tmux-exec.sh -s my-session --raw << 'EOF'
+./tmux-exec.sh --session my-session --raw << 'EOF'
 hello world
 EOF
 
 # Submit with Enter:
-./tmux-exec.sh -s my-session --keys Enter
+./tmux-exec.sh --session my-session --keys Enter
 
 # Send Ctrl-C:
-./tmux-exec.sh -s my-session --keys C-c
+./tmux-exec.sh --session my-session --keys C-c
 
 # Multiple keys in one call:
-./tmux-exec.sh -s my-session --keys Up Up Enter
+./tmux-exec.sh --session my-session --keys Up Up Enter
 ```
 
 ### Peek mode
@@ -113,7 +114,7 @@ EOF
 Check what's on screen without running a command:
 
 ```bash
-./tmux-exec.sh -s my-session -p 500
+./tmux-exec.sh --session my-session --peek-chars 500
 ```
 
 ### Heredoc input
@@ -121,7 +122,7 @@ Check what's on screen without running a command:
 Commands are passed via heredoc rather than as arguments. This avoids escaping issues -- characters like `!`, `"`, and `$` pass through cleanly:
 
 ```bash
-./tmux-exec.sh -s my-session 30 << 'EOF'
+./tmux-exec.sh --session my-session --timeout 30 << 'EOF'
 if ! grep -q "pattern" file.txt; then
   echo "not found!"
 fi
@@ -142,7 +143,7 @@ The marker-based approach survives normal tmux scrollback eviction and always fi
 
 ## Known Bugs
 
-- **Marker eviction on huge output** -- if a command produces enough output to exceed tmux's `history-limit` (default 2000 lines), the marker gets pushed out of scrollback. When this happens, the script prints `[OUTPUT EXCEEDED TMUX SCROLLBACK]` and falls back to showing the tail of the pane (respects `-t`, defaults to 2000 chars). Not as clean as marker-based extraction, but better than silent empty. Bumping `history-limit` on session creation avoids the issue entirely.
+- **Marker eviction on huge output** -- if a command produces enough output to exceed tmux's `history-limit` (default 2000 lines), the marker gets pushed out of scrollback. When this happens, the script prints `[OUTPUT EXCEEDED TMUX SCROLLBACK]` and falls back to showing the tail of the pane (respects `--truncate-chars`, defaults to 2000 chars). Not as clean as marker-based extraction, but better than silent empty. Bumping `history-limit` on session creation avoids the issue entirely.
 - **Same-session parallelism** -- tested and confirmed broken. The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
 
 ## TODO
