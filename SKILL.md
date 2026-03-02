@@ -54,7 +54,7 @@ Always pass commands via heredoc (avoids escaping issues with special characters
 | `--truncate-chars N` | Truncate output to N chars (default: 2000) |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
 | `--raw` | Paste stdin into pane via buffer (for TUIs). Fire-and-forget |
-| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.). Fire-and-forget |
+| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.). Returns pane contents after sending |
 | `--continue` | Continue watching a timed-out command |
 | `--peek-chars [N]` | Peek at last N chars on screen (default: 2000, no command needed) |
 

@@ -68,7 +68,7 @@ EOF
 | `--truncate-chars N` | Truncate output to N chars (default: 2000). Shows head + `[...truncated...]` + tail |
 | `--dangerously-skip-truncation` | Disable truncation entirely |
 | `--raw` | Raw paste mode -- stdin goes directly into the pane via tmux buffer. No marker, no polling. For TUI targets |
-| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.) via send-keys. Fire-and-forget |
+| `--keys KEY...` | Send tmux key names (Enter, C-c, Up, etc.) via send-keys. Returns pane contents after sending |
 | `--continue` | Continue mode -- resume watching a command that timed out |
 | `--peek-chars [N]` | Peek mode -- show last N chars on screen (default: 2000), no command needed |
 

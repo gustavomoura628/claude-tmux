@@ -112,9 +112,15 @@ if [ -n "$OPT_PEEK" ]; then
     exit 0
 fi
 
-# Key mode: send tmux key names directly. No text, no marker, no polling.
+# Key mode: send tmux key names, then peek at the pane.
 if [ "$OPT_KEYS" -eq 1 ]; then
     run "tmux send-keys -t $SESSION ${KEY_ARGS[*]}"
+    sleep 0.3
+    CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -")
+    if [ -n "$CAPTURE" ]; then
+        PEEK_SIZE="${OPT_PEEK:-2000}"
+        echo "${CAPTURE: -$PEEK_SIZE}"
+    fi
     exit 0
 fi
 
