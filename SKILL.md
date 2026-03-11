@@ -28,6 +28,10 @@ You have access to tmux sessions for persistent command execution -- local or re
 
 Use the built-in Bash tool for quick, stateless one-off commands.
 
+### Do NOT truncate output yourself
+
+**Do not pipe commands through `| tail`, `| head`, etc. to limit output.** The script already truncates automatically (default: 2000 chars, head + tail). Adding your own filtering hides useful output and defeats the built-in truncation. Just run the command directly -- if you need more or less output, use `--truncate-chars N` or `--dangerously-skip-truncation`. Using `tail`/`head`/`grep` as part of the actual task (e.g. reading files, filtering logs) is fine.
+
 ### Running commands
 
 ```bash
