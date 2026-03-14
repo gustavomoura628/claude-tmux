@@ -1,7 +1,7 @@
 ---
 name: claude-tmux
 description: Execute commands in persistent tmux sessions, local or remote. Use when running long-running commands, builds, installs, servers, or any task that needs persistent shell state, user visibility, or parallel execution. Prefer this over the built-in Bash tool for anything that isn't a quick one-off.
-allowed-tools: Bash(.claude/skills/claude-tmux/tmux-exec.sh:*)
+allowed-tools: Bash(.claude/skills/claude-tmux/claude-tmux.sh:*)
 ---
 
 # Tmux Operation
@@ -36,12 +36,12 @@ Use the built-in Bash tool for quick, stateless one-off commands.
 
 ```bash
 # Basic (30s default timeout):
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION << 'EOF'
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION << 'EOF'
 command here
 EOF
 
 # Remote with explicit timeout:
-.claude/skills/claude-tmux/tmux-exec.sh --host USER@HOST --session SESSION --timeout 60 << 'EOF'
+.claude/skills/claude-tmux/claude-tmux.sh --host USER@HOST --session SESSION --timeout 60 << 'EOF'
 command here
 EOF
 ```
@@ -68,18 +68,18 @@ Use `--raw` to paste text and `--keys` to send keystrokes. These are separate me
 
 ```bash
 # Paste text into a TUI pane:
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --raw << 'EOF'
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION --raw << 'EOF'
 hello world
 EOF
 
 # Then submit with Enter:
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys Enter
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION --keys Enter
 
 # Send Ctrl-C:
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys C-c
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION --keys C-c
 
 # Multiple keys:
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --keys Up Up Enter
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION --keys Up Up Enter
 ```
 
 ### Timeout and continue
@@ -87,7 +87,7 @@ EOF
 Always specify a timeout. Default is 30s -- intentionally short. If a command times out, resume with:
 
 ```bash
-.claude/skills/claude-tmux/tmux-exec.sh --session SESSION --continue --timeout 120
+.claude/skills/claude-tmux/claude-tmux.sh --session SESSION --continue --timeout 120
 ```
 
 ### Session management

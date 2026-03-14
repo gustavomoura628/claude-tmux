@@ -41,17 +41,17 @@ Commands are passed via stdin (heredoc) to avoid shell escaping issues.
 
 ```bash
 # Basic: run a command, wait up to 60s
-./tmux-exec.sh --session my-session --timeout 60 << 'EOF'
+./claude-tmux.sh --session my-session --timeout 60 << 'EOF'
 make build
 EOF
 
 # Remote session
-./tmux-exec.sh --host user@host --session my-session --timeout 60 << 'EOF'
+./claude-tmux.sh --host user@host --session my-session --timeout 60 << 'EOF'
 docker compose up -d
 EOF
 
 # Multi-line commands work naturally
-./tmux-exec.sh --session my-session --timeout 60 << 'EOF'
+./claude-tmux.sh --session my-session --timeout 60 << 'EOF'
 for i in 1 2 3; do
   echo "iteration $i"
 done
@@ -78,12 +78,12 @@ If a command times out, use `--continue` to pick up where you left off:
 
 ```bash
 # Command times out after 30s
-./tmux-exec.sh --session my-session --timeout 30 << 'EOF'
+./claude-tmux.sh --session my-session --timeout 30 << 'EOF'
 make -j8
 EOF
 
 # Resume watching (another 120s)
-./tmux-exec.sh --session my-session --continue --timeout 120
+./claude-tmux.sh --session my-session --continue --timeout 120
 ```
 
 ### Raw and key modes
@@ -95,18 +95,18 @@ For TUI targets (e.g. another Claude Code instance), text and keystrokes are sep
 
 ```bash
 # Paste text into a TUI pane:
-./tmux-exec.sh --session my-session --raw << 'EOF'
+./claude-tmux.sh --session my-session --raw << 'EOF'
 hello world
 EOF
 
 # Submit with Enter:
-./tmux-exec.sh --session my-session --keys Enter
+./claude-tmux.sh --session my-session --keys Enter
 
 # Send Ctrl-C:
-./tmux-exec.sh --session my-session --keys C-c
+./claude-tmux.sh --session my-session --keys C-c
 
 # Multiple keys in one call:
-./tmux-exec.sh --session my-session --keys Up Up Enter
+./claude-tmux.sh --session my-session --keys Up Up Enter
 ```
 
 ### Peek mode
@@ -114,7 +114,7 @@ EOF
 Check what's on screen without running a command:
 
 ```bash
-./tmux-exec.sh --session my-session --peek-chars 500
+./claude-tmux.sh --session my-session --peek-chars 500
 ```
 
 ### Heredoc input
@@ -122,7 +122,7 @@ Check what's on screen without running a command:
 Commands are passed via heredoc rather than as arguments. This avoids escaping issues -- characters like `!`, `"`, and `$` pass through cleanly:
 
 ```bash
-./tmux-exec.sh --session my-session --timeout 30 << 'EOF'
+./claude-tmux.sh --session my-session --timeout 30 << 'EOF'
 if ! grep -q "pattern" file.txt; then
   echo "not found!"
 fi
