@@ -73,6 +73,23 @@ SESSION="${OPT_SESSION:-${TMUX_REMOTE_SESSION:?'Set --session NAME or TMUX_REMOT
 BUFFER_NAME="claude-${SESSION}"
 TIMEOUT="$OPT_TIMEOUT"
 
+run() {
+    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
+}
+
+pipe_to() {
+    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
+}
+
+# Safe tail: ${var: -N} returns empty when N > ${#var}, so fall back to full string
+tail_chars() {
+    local str="$1" n="$2"
+    if [ "${#str}" -le "$n" ]; then echo "$str"; else echo "${str: -$n}"; fi
+}
+
+# Auto-create session if it doesn't exist (< /dev/null prevents SSH from consuming stdin)
+run "tmux has-session -t $SESSION 2>/dev/null || tmux new-session -d -s $SESSION" < /dev/null
+
 if [ "$OPT_KEYS" -eq 1 ]; then
     [ ${#KEY_ARGS[@]} -eq 0 ] && { echo "Error: --keys requires at least one key name" >&2; exit 1; }
 fi
@@ -94,21 +111,13 @@ fi
 TRUNCATE_TOTAL="${OPT_TRUNCATE}"
 TRUNCATE_HALF=$((TRUNCATE_TOTAL / 2))
 
-run() {
-    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
-}
-
-pipe_to() {
-    if [ -n "$HOST" ]; then ssh "$HOST" "$1"; else bash -c "$1"; fi
-}
-
 # Peek mode: grab last N chars from the pane and exit. No command, no marker.
 if [ -n "$OPT_PEEK" ]; then
     CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -")
     if [ -z "$CAPTURE" ]; then
         exit 0
     fi
-    echo "${CAPTURE: -$OPT_PEEK}"
+    tail_chars "$CAPTURE" "$OPT_PEEK"
     exit 0
 fi
 
@@ -118,8 +127,7 @@ if [ "$OPT_KEYS" -eq 1 ]; then
     sleep 0.3
     CAPTURE=$(run "tmux capture-pane -t $SESSION -p -J -S -")
     if [ -n "$CAPTURE" ]; then
-        PEEK_SIZE="${OPT_PEEK:-2000}"
-        echo "${CAPTURE: -$PEEK_SIZE}"
+        tail_chars "$CAPTURE" "${OPT_PEEK:-2000}"
     fi
     exit 0
 fi
@@ -194,7 +202,7 @@ else
         " || {
             PEEK=$(run "tmux capture-pane -t $SESSION -p -J -S -")
             echo "[ERROR] Pane is busy. Current pane contents:"
-            echo "${PEEK: -2000}"
+            tail_chars "$PEEK" 2000
             exit 0
         }
     else
@@ -209,7 +217,7 @@ else
         " || {
             PEEK=$(run "tmux capture-pane -t $SESSION -p -J -S -")
             echo "[ERROR] Pane is busy. Current pane contents:"
-            echo "${PEEK: -2000}"
+            tail_chars "$PEEK" 2000
             exit 0
         }
     fi
@@ -245,7 +253,7 @@ while true; do
             if [ -n "$CMD_OUTPUT" ]; then
                 TAIL_SIZE=${TRUNCATE_TOTAL:-2000}
                 [ "$TAIL_SIZE" -eq 0 ] && TAIL_SIZE=2000
-                echo "${CMD_OUTPUT: -$TAIL_SIZE}"
+                tail_chars "$CMD_OUTPUT" "$TAIL_SIZE"
             fi
             break
         fi
@@ -255,7 +263,7 @@ while true; do
             if [ -n "$CMD_OUTPUT" ]; then
                 TAIL_SIZE=${TRUNCATE_TOTAL:-2000}
                 [ "$TAIL_SIZE" -eq 0 ] && TAIL_SIZE=2000
-                echo "${CMD_OUTPUT: -$TAIL_SIZE}"
+                tail_chars "$CMD_OUTPUT" "$TAIL_SIZE"
             fi
             echo "[TIMEOUT after ${TIMEOUT}s]"
             exit 0
@@ -320,10 +328,10 @@ while true; do
         if [ "$TRUNCATE_HALF" -gt 0 ]; then
             if [ -n "$CMD_OUTPUT" ]; then
                 if [ "$TRUNCATED" -eq 1 ]; then
-                    echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
+                    tail_chars "$CMD_OUTPUT" "$TRUNCATE_HALF"
                 elif [ "${#CMD_OUTPUT}" -gt "$TRUNCATE_TOTAL" ]; then
                     echo "[...truncated...]"
-                    echo "${CMD_OUTPUT: -$TRUNCATE_HALF}"
+                    tail_chars "$CMD_OUTPUT" "$TRUNCATE_HALF"
                 else
                     OUTPUT_LINES=$(echo "$CMD_OUTPUT" | wc -l)
                     if [ "$OUTPUT_LINES" -gt "$PRINTED_LINES" ]; then
@@ -350,7 +358,7 @@ while true; do
             SNAP=$(snapshot)
             FULL_OUTPUT=$(echo "$SNAP" | sed -n "/$SNAP_DELIM/,\$p" | tail -n +2)
             if [ -n "$FULL_OUTPUT" ]; then
-                echo "${FULL_OUTPUT: -$TRUNCATE_HALF}"
+                tail_chars "$FULL_OUTPUT" "$TRUNCATE_HALF"
             fi
         fi
         echo "[TIMEOUT after ${TIMEOUT}s]"
