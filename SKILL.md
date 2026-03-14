@@ -92,16 +92,9 @@ Always specify a timeout. Default is 30s -- intentionally short. If a command ti
 
 ### Session management
 
-Do most work in a single primary session. If you need parallelism, spawn extras:
+Sessions are auto-created if they don't exist. Just use `--session NAME` and the script handles it.
 
-```bash
-# Local
-tmux new -d -s claude-session-0
-# Remote
-ssh user@host "tmux new -d -s claude-session-0"
-```
-
-Check existing sessions before creating new ones: `tmux list-sessions` (or `ssh user@host "tmux list-sessions"`).
+Do most work in a single primary session. If you need parallelism, use additional session names.
 
 ### Manual fallback
 

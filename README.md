@@ -141,22 +141,6 @@ EOF
 
 The marker-based approach survives normal tmux scrollback eviction and always finds the correct output even with long history — with one exception (see bugs).
 
-## Known Bugs
-
-- **Marker eviction on huge output** -- if a command produces enough output to exceed tmux's `history-limit` (default 2000 lines), the marker gets pushed out of scrollback. When this happens, the script prints `[OUTPUT EXCEEDED TMUX SCROLLBACK]` and falls back to showing the tail of the pane (respects `--truncate-chars`, defaults to 2000 chars). Not as clean as marker-based extraction, but better than silent empty. Bumping `history-limit` on session creation avoids the issue entirely.
-- **Same-session parallelism** -- tested and confirmed broken. The idle check + dispatch isn't atomic, so concurrent calls all pass the busy check and paste over each other. Local sessions: simple `flock` around the whole execution. Remote sessions: harder — current architecture does many short SSH calls so you can't hold a lock across them.
-
-## TODO
-
-### Ideas
-
-- **Single-SSH rewrite** -- move the entire poll loop to the remote side so it runs as one SSH call. Flock wraps the whole thing. Also eliminates per-poll SSH latency (~1-2s per round-trip). Downside: ~100 lines of bash shipped over SSH every invocation, escaping complexity, harder to debug.
-- **Remote helper script** -- on first use, scp a helper script to the remote machine (e.g. `/tmp/tmux-exec-remote.sh`). Local side just calls `ssh host /tmp/tmux-exec-remote.sh <args>`. The remote script does flock + dispatch + poll + streaming. Avoids shipping code every call, easier to debug (it's a real file on the remote), and the remote script can be version-checked and re-deployed if stale. Downside: adds a deploy/sync step.
-- **Auto-deploy tmux** -- if the remote doesn't have tmux, scp a statically compiled binary (e.g. from `tmux-static` on GitHub) and use that. Same deploy pattern as the remote helper script. Binary must match the remote's architecture. Preferred install locations in order: `$XDG_RUNTIME_DIR` (per-user tmpfs, avoids noexec issues), `/tmp` (may be noexec on hardened systems), `~/bin` as a last resort (schedule deletion via `at` or a background `sleep N && rm` to avoid leaving permanent files on someone else's machine).
-- **No-tmux fallback** -- if the remote has no tmux and we can't deploy it, fall back to plain SSH with a background process + output file: `nohup cmd > /tmp/tmux-exec-output-$ID 2>&1 & echo $!`, then poll the file. Loses the user-visible pane but keeps persistent execution and output capture. Degraded mode beats no mode.
-- **Screen as a fallback** -- GNU screen ships on more systems than tmux, especially older/minimal servers. The core mechanics (send command, capture output, check idle) all have screen equivalents. Could adapt automatically.
-- **Multiplexer auto-detection** -- on first connect, probe the remote: `which tmux || which screen || echo NONE`. Cache the result. Pick the best available backend automatically rather than failing.
-
 ## Requirements
 
 - tmux on the target machine
